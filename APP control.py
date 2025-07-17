@@ -234,7 +234,7 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             # Código de actividad (prominente)
             ax.text(x, y+node_radius*0.5, f"{node}", fontsize=12, ha='center', va='center', 
                    fontweight='bold', color='#003366',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor=edge_color, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor=edge_color))
             # Nombre de la actividad (mejor formateado)
             activity_name = activities[node]['name']
             if len(activity_name) > 18:
@@ -245,33 +245,33 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
                     activity_name = activity_name[:15] + "..."
             ax.text(x, y, activity_name, fontsize=8, ha='center', va='center', 
                    color='#000000', fontweight='normal', 
-                   bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.9, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.9))
             # Tiempo esperado (destacado)
             ax.text(x, y-node_radius*0.5, f"TE={te:.1f}d", fontsize=10, ha='center', va='center', 
                    color='#066666', fontweight='bold', 
-                   bbox=dict(boxstyle="round,pad=0.2", facecolor='#E8F5E8', alpha=0.9, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.2", facecolor='#E8F5E8', alpha=0.9))
             # Tiempos ES/EF (arriba)
             ax.text(x-node_radius*0.7, y+node_radius*0.2, f"ES={es:.0f}", fontsize=7, 
                    ha='center', va='center', color='#066666', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
             ax.text(x+node_radius*0.7, y+node_radius*0.2, f"EF={ef:.0f}", fontsize=7, 
                    ha='center', va='center', color='#066666', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
             # Tiempos LS/LF (abajo)
             ax.text(x-node_radius*0.7, y-node_radius*0.2, f"LS={ls:.0f}", fontsize=7, 
                    ha='center', va='center', color='#CC6600', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
             ax.text(x+node_radius*0.7, y-node_radius*0.2, f"LF={lf:.0f}", fontsize=7, 
                    ha='center', va='center', color='#CC6600', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8, lw=1))
+                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
             # Holgura si existe
             if slack > 0.01:
                 ax.text(x, y-node_radius*0.8, f"H:{slack:.0f}", fontsize=8, ha='center', va='center', 
                        color='#660066', fontweight='bold',
-                       bbox=dict(boxstyle="round,pad=0.2", facecolor='#F0E6F0', alpha=0.9, lw=1))
+                       bbox=dict(boxstyle="round,pad=0.2", facecolor='#F0E6F0', alpha=0.9))
         # Título principal profesional
         ax.text(0.5, 1.08, "DIAGRAMA DE RED PERT-CPM", fontsize=18, ha='center', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
-                bbox=dict(boxstyle="round,pad=0.5", facecolor='#E6F3FF', alpha=0.9, lw=2))
+                 bbox=dict(boxstyle="round,pad=0.5", facecolor='#E6F3FF', alpha=0.9))
         # Subtítulos informativos
         ax.text(0.5, 1.04, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea", fontsize=14, ha='center', va='center', transform=ax.transAxes, color='#033666', fontweight='bold')
         ax.text(0.5, 1.01, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ", fontsize=11, ha='center', va='center', transform=ax.transAxes, color='#666666')
@@ -279,7 +279,7 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
         legend_x = 1.02
         legend_y = 0.95
         ax.text(legend_x, legend_y, "LEYENDA DEL DIAGRAMA", fontsize=12, ha='left', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='#F5F5F5', alpha=0.9, lw=1))
+                 bbox=dict(boxstyle="round,pad=0.3", facecolor='#F5F5F5', alpha=0.9))
         ax.text(legend_x, legend_y-0.04, "● Ruta Crítica (Rojo)", fontsize=10, ha='left', va='center', transform=ax.transAxes, color='#FF0000', fontweight='bold')
         ax.text(legend_x, legend_y-0.08, "● Actividad Normal (Azul)", fontsize=10, ha='left', va='center', transform=ax.transAxes, color='#0066CC')
         ax.text(legend_x, legend_y-0.12, "ES: Early Start (Verde)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#066666', fontweight='bold')
