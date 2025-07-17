@@ -163,37 +163,32 @@ def calculate_cpm(activities, pert_results=None):
             'total_duration': 0
         }
 
-def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=23.4, fig_height=16.5, node_radius=28):
+def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=16.5, fig_height=11.7, node_radius=18):
     try:
-        # Limpiar memoria antes de crear el diagrama
         gc.collect()
-        plt.close('all') # Cerrar todas las figuras anteriores
-        
+        plt.close('all')
         G = nx.DiGraph()
         for activity in activities:
             G.add_node(activity)
         for activity in activities:
             for pred in activities[activity]['predecessors']:
                 G.add_edge(pred, activity)
-        
-        # Usar layout jerárquico para mejor presentación profesional
+
+        # Intentar usar layout jerárquico (graphviz_layout)
         try:
-            pos = nx.spring_layout(G, seed=42, k=20, iterations=50)
+            pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
         except Exception:
             try:
-                pos = nx.circular_layout(G)
+                pos = nx.spring_layout(G, seed=42, k=2, iterations=50)
             except Exception:
-                pos = {node: (i,0) for i, node in enumerate(G.nodes())}
-        
-        # Configuración matplotlib profesional
-        plt.rcParams['figure.dpi'] = 100
-        plt.rcParams['savefig.dpi'] = 100
+                pos = nx.circular_layout(G)
+
+        # Ajustar tamaño a A3 (11.7 x 16.5 pulgadas)
+        fig, ax = plt.subplots(figsize=(16.5, 11.7), facecolor='white')
         plt.rcParams['font.size'] = 9
         plt.rcParams['axes.linewidth'] = 1.5
         plt.rcParams['lines.linewidth'] = 2
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor='white')
-        
-        # Dibujar arcos con mejor calidad visual
+
         for edge in G.edges():
             is_critical = edge[0] in cpm_results['critical_path'] and edge[1] in cpm_results['critical_path']
             color = '#FF0000' if is_critical else '#333333'
@@ -203,8 +198,7 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
                         arrowprops=dict(arrowstyle="->", color=color, lw=width, 
                                       shrinkA=node_radius+3, shrinkB=node_radius+3,
                                       alpha=alpha, mutation_scale=20))
-        
-        # Dibujar nodos con diseño profesional
+
         for node in G.nodes():
             x, y = pos[node]
             es = cpm_results['es'][node]
@@ -214,7 +208,6 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             slack = cpm_results['slack'][node]
             te = pert_results[node]['te'] if pert_results else activities[node]['duration']
             is_critical = node in cpm_results['critical_path']
-            # Colores profesionales según tipo de nodo
             if is_critical:
                 node_color = '#FFE6E6'
                 edge_color = '#FF0000'
@@ -223,19 +216,15 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
                 node_color = '#E6F3FF'
                 edge_color = '#0066CC'
                 edge_width = 1.5
-            # Nodo principal
             circ = Circle((x, y), node_radius, fill=True, lw=edge_width, 
                          color=node_color, ec=edge_color, alpha=0.95)
             ax.add_patch(circ)
-            # Borde adicional para nodos críticos
             if is_critical:
                 circ2 = Circle((x, y), node_radius+3, fill=False, lw=3, color='#FF0000')
                 ax.add_patch(circ2)
-            # Código de actividad (prominente)
             ax.text(x, y+node_radius*0.5, f"{node}", fontsize=12, ha='center', va='center', 
                    fontweight='bold', color='#003366',
                    bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor=edge_color))
-            # Nombre de la actividad (mejor formateado)
             activity_name = activities[node]['name']
             if len(activity_name) > 18:
                 words = activity_name.split()
@@ -246,36 +235,29 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             ax.text(x, y, activity_name, fontsize=8, ha='center', va='center', 
                    color='#000000', fontweight='normal', 
                    bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.9))
-            # Tiempo esperado (destacado)
             ax.text(x, y-node_radius*0.5, f"TE={te:.1f}d", fontsize=10, ha='center', va='center', 
                    color='#066666', fontweight='bold', 
                    bbox=dict(boxstyle="round,pad=0.2", facecolor='#E8F5E8', alpha=0.9))
-            # Tiempos ES/EF (arriba)
             ax.text(x-node_radius*0.7, y+node_radius*0.2, f"ES={es:.0f}", fontsize=7, 
                    ha='center', va='center', color='#066666', fontweight='bold',
                    bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
             ax.text(x+node_radius*0.7, y+node_radius*0.2, f"EF={ef:.0f}", fontsize=7, 
                    ha='center', va='center', color='#066666', fontweight='bold',
                    bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
-            # Tiempos LS/LF (abajo)
             ax.text(x-node_radius*0.7, y-node_radius*0.2, f"LS={ls:.0f}", fontsize=7, 
                    ha='center', va='center', color='#CC6600', fontweight='bold',
                    bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
             ax.text(x+node_radius*0.7, y-node_radius*0.2, f"LF={lf:.0f}", fontsize=7, 
                    ha='center', va='center', color='#CC6600', fontweight='bold',
                    bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
-            # Holgura si existe
             if slack > 0.01:
                 ax.text(x, y-node_radius*0.8, f"H:{slack:.0f}", fontsize=8, ha='center', va='center', 
                        color='#660066', fontweight='bold',
                        bbox=dict(boxstyle="round,pad=0.2", facecolor='#F0E6F0', alpha=0.9))
-        # Título principal profesional
         ax.text(0.5, 1.08, "DIAGRAMA DE RED PERT-CPM", fontsize=18, ha='center', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
                  bbox=dict(boxstyle="round,pad=0.5", facecolor='#E6F3FF', alpha=0.9))
-        # Subtítulos informativos
         ax.text(0.5, 1.04, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea", fontsize=14, ha='center', va='center', transform=ax.transAxes, color='#033666', fontweight='bold')
         ax.text(0.5, 1.01, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ", fontsize=11, ha='center', va='center', transform=ax.transAxes, color='#666666')
-        # Leyenda profesional
         legend_x = 1.02
         legend_y = 0.95
         ax.text(legend_x, legend_y, "LEYENDA DEL DIAGRAMA", fontsize=12, ha='left', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
@@ -293,6 +275,8 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
         return fig
     except Exception as e:
         st.error(f"Error al generar diagrama: {str(e)}")
+        import traceback
+        st.text(traceback.format_exc())
         return None
 
 def export_to_pdf(fig, table_df):
