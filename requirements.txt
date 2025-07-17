@@ -1,8 +1,9 @@
-streamlit
-pandas
-matplotlib
-networkx
-numpy
-Pillow
-reportlab
-plotly 
+streamlit>=1.22.0
+pandas>=1.5.0
+matplotlib>=3.6.0
+networkx>=3.0
+numpy>=1.23.0
+Pillow>=9.3.0
+reportlab>=3.6.0
+plotly>=5.11.0
+python-dateutil>=2.8.2 

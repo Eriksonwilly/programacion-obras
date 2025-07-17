@@ -177,13 +177,13 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             for pred in activities[activity]['predecessors']:
                 G.add_edge(pred, activity)
 
-        # Configurar el layout alternativo (sin pygraphviz)
+        # Configurar el layout robusto (sin dependencias externas)
         try:
-            # Intentar con layout jerárquico de NetworkX
-            pos = nx.multipartite_layout(G, subset_key="layer", align="horizontal")
-        except:
-            # Si falla, usar layout spring mejorado
+            # Usar layout spring mejorado como opción principal
             pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
+        except Exception as layout_error:
+            # Si falla, usar layout circular como respaldo
+            pos = nx.circular_layout(G)
         
         # Crear figura con tamaño optimizado para Streamlit
         fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=100)
@@ -340,194 +340,212 @@ def export_to_pdf(img_path, table_df):
         return None
 
 def main():
-    activities = get_project_data()
-    st.title("Presentación Integral PERT-CPM y Control de Obras")
-    st.markdown("""
-    <b>Proyecto:</b> Construcción de Vivienda de Dos Plantas + Azotea  
-    <b>Ubicación:</b> Chiclayo, Lambayeque  
-    <b>Elaborado por:</b> Ing. Civil UNI (20 años de experiencia en edificación)  
-    <b>Empresa:</b> CONSORCIO DEJ
-    """, unsafe_allow_html=True)
-    st.markdown("---")
-    
-    st.subheader("1. Ingrese los tiempos PERT para cada actividad")
-    pert_inputs = {}
-    
-    with st.form("pert_form"):
-        cols = st.columns(4)
-        for code, data in activities.items():
-            with cols[hash(code)%4]:
-                st.markdown(f"**{code}: {data['name']}**")
-                o = st.number_input(f"Optimista ({code})", min_value=1.0, value=float(data['duration']), key=f"o_{code}")
-                m = st.number_input(f"Más probable ({code})", min_value=1.0, value=float(data['duration']), key=f"m_{code}")
-                p = st.number_input(f"Pesimista ({code})", min_value=1.0, value=float(data['duration']+1), key=f"p_{code}")
-                pert_inputs[code] = {'optimista': o, 'probable': m, 'pesimista': p}
-        
-        submitted = st.form_submit_button("Calcular PERT y CPM")
-    
-    if submitted:
+    try:
+        # Verificar dependencias críticas
         try:
-            # Limpiar memoria antes de comenzar cálculos
-            gc.collect()
-            plt.close('all')
+            import streamlit as st
+            import pandas as pd
+            import networkx as nx
+            import matplotlib.pyplot as plt
+            import numpy as np
+            import math
+            from datetime import datetime, timedelta
+        except ImportError as import_error:
+            st.error(f"Error de importación: {str(import_error)}. Por favor instale las dependencias con: pip install -r requirements.txt")
+            return
+        
+        activities = get_project_data()
+        st.title("Presentación Integral PERT-CPM y Control de Obras")
+        st.markdown("""
+        <b>Proyecto:</b> Construcción de Vivienda de Dos Plantas + Azotea  
+        <b>Ubicación:</b> Chiclayo, Lambayeque  
+        <b>Elaborado por:</b> Ing. Civil UNI (20 años de experiencia en edificación)  
+        <b>Empresa:</b> CONSORCIO DEJ
+        """, unsafe_allow_html=True)
+        st.markdown("---")
+        
+        st.subheader("1. Ingrese los tiempos PERT para cada actividad")
+        pert_inputs = {}
+        
+        with st.form("pert_form"):
+            cols = st.columns(4)
+            for code, data in activities.items():
+                with cols[hash(code)%4]:
+                    st.markdown(f"**{code}: {data['name']}**")
+                    o = st.number_input(f"Optimista ({code})", min_value=1.0, value=float(data['duration']), key=f"o_{code}")
+                    m = st.number_input(f"Más probable ({code})", min_value=1.0, value=float(data['duration']), key=f"m_{code}")
+                    p = st.number_input(f"Pesimista ({code})", min_value=1.0, value=float(data['duration']+1), key=f"p_{code}")
+                    pert_inputs[code] = {'optimista': o, 'probable': m, 'pesimista': p}
             
-            # Verificar que todos los datos estén completos
-            if not pert_inputs or len(pert_inputs) != len(activities):
-                st.error("Por favor complete todos los tiempos PERT antes de calcular.")
-                return
-            
-            pert_results = calculate_pert(activities, pert_inputs)
-            cpm_results = calculate_cpm(activities, pert_results)
-            st.success("¡Cálculo realizado!")
-            
-            st.subheader("2. Diagrama de Red PERT-CPM")
+            submitted = st.form_submit_button("Calcular PERT y CPM")
+        
+        if submitted:
             try:
-                # Tamaño optimizado para Streamlit
-                img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
-                                       fig_width=10, fig_height=7, node_size=2000)
+                # Limpiar memoria antes de comenzar cálculos
+                gc.collect()
+                plt.close('all')
                 
-                if img_path:
-                    # Mostrar imagen con ancho ajustado
-                    st.image(img_path, caption="Diagrama de Red PERT-CPM", width=900)
-                    
-                    # Botón de descarga
-                    with open(img_path, "rb") as img_file:
-                        st.download_button(
-                            "Descargar Diagrama como PNG", 
-                            data=img_file, 
-                            file_name="diagrama_pert_cpm.png", 
-                            mime="image/png"
-                        )
-                else:
-                    st.warning("No se pudo generar el diagrama.")
-                    
-            except Exception as diagram_error:
-                st.error(f"Error al mostrar diagrama: {str(diagram_error)}")
-            
-            st.subheader("3. Tabla de Actividades y Resultados PERT")
-            try:
-                table_data = []
-                for k, v in activities.items():
-                    if k in pert_results:
-                        row = [
-                            k, 
-                            v['name'], 
-                            pert_results[k]['te'], 
-                            pert_results[k]['o'], 
-                            pert_results[k]['m'], 
-                            pert_results[k]['p'], 
-                            pert_results[k]['var'], 
-                            v['category']
-                        ]
-                        table_data.append(row)
+                # Verificar que todos los datos estén completos
+                if not pert_inputs or len(pert_inputs) != len(activities):
+                    st.error("Por favor complete todos los tiempos PERT antes de calcular.")
+                    return
                 
-                table_df = pd.DataFrame(table_data, 
-                                      columns=["Código", "Actividad", "Duración Esperada", "Optimista", 
-                                              "Más Probable", "Pesimista", "Varianza", "Especialidad"])
-                st.dataframe(table_df, use_container_width=True)
-            except Exception as table_error:
-                st.error(f"Error al generar tabla: {str(table_error)}")
-            
-            st.subheader("4. Probabilidad de Conclusión del Proyecto y por Especialidad")
-            try:
-                for esp in table_df['Especialidad'].unique():
-                    esp_acts = table_df[table_df['Especialidad']==esp]['Código'].tolist()
-                    te_esp = sum(pert_results[k]['te'] for k in esp_acts if k in pert_results)
-                    var_esp = sum(pert_results[k]['var'] for k in esp_acts if k in pert_results)
-                    std_esp = np.sqrt(var_esp) if var_esp > 0 else 0
-                    st.write(f"**{esp}:** Duración esperada: {te_esp:.2f} días, Desviación estándar: {std_esp:.2f} días")
-                    objetivo = st.number_input(f"Plazo objetivo para {esp}", min_value=1.0, value=float(te_esp), key=f"obj_{esp}")
-                    prob = 0.0
-                    if std_esp > 0:
-                        z = (objetivo - te_esp) / std_esp
-                        prob = float(100 * (0.5 * (1 + math.erf(z/math.sqrt(2)))))
-                    st.write(f"Probabilidad de concluir en {objetivo:.1f} días o menos: {prob:.2f}%")
-            except Exception as prob_error:
-                st.error(f"Error al calcular probabilidades: {str(prob_error)}")
-            
-            st.markdown("---")
-            st.subheader("5. Cronograma de Ejecución (Gantt por Especialidad)")
-            try:
-                gantt_data = []
-                start_date = datetime(2023, 10, 1)
+                pert_results = calculate_pert(activities, pert_inputs)
+                cpm_results = calculate_cpm(activities, pert_results)
+                st.success("¡Cálculo realizado!")
                 
-                for code, v in activities.items():
-                    if code in cpm_results['es'] and code in pert_results:
-                        es = cpm_results['es'][code]
-                        duration = pert_results[code]['te']
-                        start = start_date + timedelta(days=es)
-                        finish = start + timedelta(days=duration)
-                        gantt_data.append({
-                            'Actividad': f"{code}: {v['name']}",
-                            'Inicio': start,
-                            'Fin': finish,
-                            'Duración': duration,
-                            'Especialidad': v['category']
-                        })
-                
-                gantt_df = pd.DataFrame(gantt_data)
-                
+                st.subheader("2. Diagrama de Red PERT-CPM")
                 try:
-                    import plotly.express as px
-                    fig_gantt = px.timeline(gantt_df, x_start='Inicio', x_end='Fin', y='Actividad', 
-                                          color='Especialidad', title='Cronograma de Ejecución')
-                    fig_gantt.update_layout(height=600)
-                    st.plotly_chart(fig_gantt, use_container_width=True)
-                except Exception as gantt_error:
-                    st.warning(f"No se pudo generar el gráfico Gantt: {str(gantt_error)}")
-                    st.dataframe(gantt_df)
-            except Exception as crono_error:
-                st.error(f"Error al generar cronograma: {str(crono_error)}")
-            
-            st.subheader("6. Cronograma de Adquisición de Materiales y Consolidado Total")
-            try:
-                materials_df = get_materials_data()
-                
-                # Asignar fechas de adquisición según inicio de cada actividad
-                for idx, row in materials_df.iterrows():
-                    code = row['Actividad']
-                    if code in cpm_results['es']:
-                        es = cpm_results['es'][code]
-                        start = start_date + timedelta(days=int(es))
-                        if isinstance(start, datetime):
-                            materials_df.at[idx, 'Fecha Necesaria'] = start.strftime('%Y-%m-%d')
-                        else:
-                            # Si por alguna razón start no es datetime, conviértelo
-                            materials_df.at[idx, 'Fecha Necesaria'] = (datetime.now() + timedelta(days=int(es))).strftime('%Y-%m-%d')
-                
-                st.dataframe(materials_df, use_container_width=True)
-            except Exception as materials_error:
-                st.error(f"Error al generar cronograma de materiales: {str(materials_error)}")
-            
-            st.subheader("Exportar resultados a PDF")
-            try:
-                if img_path and os.path.exists(img_path) and 'table_df' in locals():
-                    pdf_buf = export_to_pdf(img_path, table_df)
-                    if pdf_buf is not None:
-                        st.download_button("Descargar PDF de Diagrama y Tabla", 
-                                         data=pdf_buf.getvalue(), 
-                                         file_name="PERT_CPM_RESULTADOS.pdf", 
-                                         mime="application/pdf")
-                        st.markdown('<a href="PERT_CPM_RESULTADOS.pdf" download>Descargar PDF guardado automáticamente</a>', 
-                                  unsafe_allow_html=True)
+                    # Tamaño optimizado para Streamlit
+                    img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
+                                                   fig_width=10, fig_height=7, node_size=2000)
+                    
+                    if img_path:
+                        # Mostrar imagen con ancho ajustado
+                        st.image(img_path, caption="Diagrama de Red PERT-CPM", width=900)
+                        
+                        # Botón de descarga
+                        with open(img_path, "rb") as img_file:
+                            st.download_button(
+                                "Descargar Diagrama como PNG", 
+                                data=img_file, 
+                                file_name="diagrama_pert_cpm.png", 
+                                mime="image/png"
+                            )
                     else:
-                        st.error("No se pudo generar el PDF.")
-                else:
-                    st.warning("No se puede exportar PDF sin diagrama o tabla.")
-            except Exception as pdf_error:
-                st.error(f"Error al exportar PDF: {str(pdf_error)}")
+                        st.warning("No se pudo generar el diagrama.")
+                        
+                except Exception as diagram_error:
+                    st.error(f"Error al mostrar diagrama: {str(diagram_error)}")
+                
+                st.subheader("3. Tabla de Actividades y Resultados PERT")
+                try:
+                    table_data = []
+                    for k, v in activities.items():
+                        if k in pert_results:
+                            row = [
+                                k, 
+                                v['name'], 
+                                pert_results[k]['te'], 
+                                pert_results[k]['o'], 
+                                pert_results[k]['m'], 
+                                pert_results[k]['p'], 
+                                pert_results[k]['var'], 
+                                v['category']
+                            ]
+                            table_data.append(row)
+                    
+                    table_df = pd.DataFrame(table_data, 
+                                          columns=["Código", "Actividad", "Duración Esperada", "Optimista", 
+                                                  "Más Probable", "Pesimista", "Varianza", "Especialidad"])
+                    st.dataframe(table_df, use_container_width=True)
+                except Exception as table_error:
+                    st.error(f"Error al generar tabla: {str(table_error)}")
+                
+                st.subheader("4. Probabilidad de Conclusión del Proyecto y por Especialidad")
+                try:
+                    for esp in table_df['Especialidad'].unique():
+                        esp_acts = table_df[table_df['Especialidad']==esp]['Código'].tolist()
+                        te_esp = sum(pert_results[k]['te'] for k in esp_acts if k in pert_results)
+                        var_esp = sum(pert_results[k]['var'] for k in esp_acts if k in pert_results)
+                        std_esp = np.sqrt(var_esp) if var_esp > 0 else 0
+                        st.write(f"**{esp}:** Duración esperada: {te_esp:.2f} días, Desviación estándar: {std_esp:.2f} días")
+                        objetivo = st.number_input(f"Plazo objetivo para {esp}", min_value=1.0, value=float(te_esp), key=f"obj_{esp}")
+                        prob = 0.0
+                        if std_esp > 0:
+                            z = (objetivo - te_esp) / std_esp
+                            prob = float(100 * (0.5 * (1 + math.erf(z/math.sqrt(2)))))
+                        st.write(f"Probabilidad de concluir en {objetivo:.1f} días o menos: {prob:.2f}%")
+                except Exception as prob_error:
+                    st.error(f"Error al calcular probabilidades: {str(prob_error)}")
+                
+                st.markdown("---")
+                st.subheader("5. Cronograma de Ejecución (Gantt por Especialidad)")
+                try:
+                    gantt_data = []
+                    start_date = datetime(2023, 10, 1)
+                    
+                    for code, v in activities.items():
+                        if code in cpm_results['es'] and code in pert_results:
+                            es = cpm_results['es'][code]
+                            duration = pert_results[code]['te']
+                            start = start_date + timedelta(days=es)
+                            finish = start + timedelta(days=duration)
+                            gantt_data.append({
+                                'Actividad': f"{code}: {v['name']}",
+                                'Inicio': start,
+                                'Fin': finish,
+                                'Duración': duration,
+                                'Especialidad': v['category']
+                            })
+                    
+                    gantt_df = pd.DataFrame(gantt_data)
+                    
+                    try:
+                        import plotly.express as px
+                        fig_gantt = px.timeline(gantt_df, x_start='Inicio', x_end='Fin', y='Actividad', 
+                                              color='Especialidad', title='Cronograma de Ejecución')
+                        fig_gantt.update_layout(height=600)
+                        st.plotly_chart(fig_gantt, use_container_width=True)
+                    except Exception as gantt_error:
+                        st.warning(f"No se pudo generar el gráfico Gantt: {str(gantt_error)}")
+                        st.dataframe(gantt_df)
+                except Exception as crono_error:
+                    st.error(f"Error al generar cronograma: {str(crono_error)}")
+                
+                st.subheader("6. Cronograma de Adquisición de Materiales y Consolidado Total")
+                try:
+                    materials_df = get_materials_data()
+                    
+                    # Asignar fechas de adquisición según inicio de cada actividad
+                    for idx, row in materials_df.iterrows():
+                        code = row['Actividad']
+                        if code in cpm_results['es']:
+                            es = cpm_results['es'][code]
+                            start = start_date + timedelta(days=int(es))
+                            if isinstance(start, datetime):
+                                materials_df.at[idx, 'Fecha Necesaria'] = start.strftime('%Y-%m-%d')
+                            else:
+                                # Si por alguna razón start no es datetime, conviértelo
+                                materials_df.at[idx, 'Fecha Necesaria'] = (datetime.now() + timedelta(days=int(es))).strftime('%Y-%m-%d')
+                    
+                    st.dataframe(materials_df, use_container_width=True)
+                except Exception as materials_error:
+                    st.error(f"Error al generar cronograma de materiales: {str(materials_error)}")
+                
+                st.subheader("Exportar resultados a PDF")
+                try:
+                    if img_path and os.path.exists(img_path) and 'table_df' in locals():
+                        pdf_buf = export_to_pdf(img_path, table_df)
+                        if pdf_buf is not None:
+                            st.download_button("Descargar PDF de Diagrama y Tabla", 
+                                             data=pdf_buf.getvalue(), 
+                                             file_name="PERT_CPM_RESULTADOS.pdf", 
+                                             mime="application/pdf")
+                            st.markdown('<a href="PERT_CPM_RESULTADOS.pdf" download>Descargar PDF guardado automáticamente</a>', 
+                                      unsafe_allow_html=True)
+                        else:
+                            st.error("No se pudo generar el PDF.")
+                    else:
+                        st.warning("No se puede exportar PDF sin diagrama o tabla.")
+                except Exception as pdf_error:
+                    st.error(f"Error al exportar PDF: {str(pdf_error)}")
+                
+                # Limpiar memoria al final
+                gc.collect()
+                
+            except Exception as e:
+                st.error(f"Error en el cálculo: {str(e)}")
+                st.info("Intente reducir los valores de entrada o reinicie la aplicación.")
+                # Limpiar memoria en caso de error
+                gc.collect()
+                plt.close('all')
+        else:
+            st.info("Ingrese los tiempos PERT y presione 'Calcular PERT y CPM' para ver resultados.")
             
-            # Limpiar memoria al final
-            gc.collect()
-            
-        except Exception as e:
-            st.error(f"Error en el cálculo: {str(e)}")
-            st.info("Intente reducir los valores de entrada o reinicie la aplicación.")
-            # Limpiar memoria en caso de error
-            gc.collect()
-            plt.close('all')
-    else:
-        st.info("Ingrese los tiempos PERT y presione 'Calcular PERT y CPM' para ver resultados.")
+    except Exception as main_error:
+        st.error(f"Error general en la aplicación: {str(main_error)}")
+        st.info("Por favor verifique que todas las dependencias estén instaladas correctamente.")
 
 if __name__ == "__main__":
     main()
