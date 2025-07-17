@@ -281,72 +281,53 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
 
 def export_to_pdf(fig, table_df):
     try:
-        # Limpiar memoria antes de exportar
         gc.collect()
-        
         buf = io.BytesIO()
-        # Guardar la figura con el tamaño A2 landscape solo para PDF
         fig.set_size_inches(23.4, 16.5)
-        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', 
-                   facecolor='white', edgecolor='none')
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white', edgecolor='none')
         buf.seek(0)
-        
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=landscape(A2))
-        
-        # Agregar título al PDF
         c.setFont("Helvetica-Bold", 16)
         c.drawString(40, 550, "REPORTE PERT-CPM - CONTROL DE OBRAS")
         c.setFont("Helvetica", 12)
         c.drawString(40, 530, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea")
         c.drawString(40, 515, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ")
-        
-        # Insertar diagrama grande y centrado
         try:
             img = ImageReader(buf)
             c.drawImage(img, 40, 250, width=900, height=500, mask='auto')
         except Exception as e:
             c.drawString(40, 300, f"Error al insertar diagrama: {str(e)}")
-        
-        # Tabla de resultados
         x0, y0 = 40, 220
         c.setFont("Helvetica-Bold", 12)
         c.drawString(x0, y0, "Tabla de Actividades y Resultados PERT:")
         y = y0 - 20
-        
-        # Encabezados de tabla
         col_widths = [50, 180, 70, 50, 50, 50, 50, 80]
         headers = list(table_df.columns)
         c.setFont("Helvetica-Bold", 9)
         for i, h in enumerate(headers):
             c.drawString(x0 + sum(col_widths[:i]), y, str(h))
         y -= 15
-        
-        # Datos de tabla
         c.setFont("Helvetica", 8)
         for idx, row in table_df.iterrows():
             for i, val in enumerate(row):
                 text_val = str(round(val,2)) if isinstance(val, float) else str(val)
                 c.drawString(x0 + sum(col_widths[:i]), y, text_val)
             y -= 12
-            if y < 30:  # Nueva página si no hay espacio
+            if y < 30:
                 c.showPage()
                 y = 500
                 c.setFont("Helvetica", 8)
-        
         c.showPage()
         c.save()
         pdf_buf.seek(0)
-        
-        # Guardar automáticamente
+        # Guardar automáticamente, pero manejar errores y no detener la app
         try:
             with open("PERT_CPM_RESULTADOS.pdf", "wb") as f:
                 f.write(pdf_buf.getvalue())
         except Exception as e:
-            st.warning(f"No se pudo guardar el archivo PDF: {str(e)}")
-        
+            st.warning(f"No se pudo guardar el archivo PDF automáticamente en disco: {str(e)}. Puedes descargarlo usando el botón de descarga.")
         return pdf_buf
-        
     except Exception as e:
         st.error(f"Error al exportar PDF: {str(e)}")
         return None
