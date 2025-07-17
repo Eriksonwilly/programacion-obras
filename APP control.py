@@ -164,7 +164,7 @@ def calculate_cpm(activities, pert_results=None):
             'total_duration': 0
         }
 
-def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=12, fig_height=8, node_radius=15, max_nodes=30):
+def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=10, fig_height=7, node_size=2000, max_nodes=30):
     try:
         # Limpiar cualquier figura previa
         plt.close('all')
@@ -177,22 +177,64 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             for pred in activities[activity]['predecessors']:
                 G.add_edge(pred, activity)
 
-        # Configurar el layout
-        pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
+        # Configurar el layout alternativo (sin pygraphviz)
+        try:
+            # Intentar con layout jerárquico de NetworkX
+            pos = nx.multipartite_layout(G, subset_key="layer", align="horizontal")
+        except:
+            # Si falla, usar layout spring mejorado
+            pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
         
-        # Crear figura con tamaño más manejable
+        # Crear figura con tamaño optimizado para Streamlit
         fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=100)
         plt.rcParams['font.size'] = 8
-        plt.rcParams['axes.linewidth'] = 1.0
+        plt.rcParams['axes.linewidth'] = 0.8
         
-        # Dibujar aristas
+        # Dibujar aristas con estilo mejorado
         for edge in G.edges():
             is_critical = edge[0] in cpm_results['critical_path'] and edge[1] in cpm_results['critical_path']
-            color = 'red' if is_critical else 'gray'
-            width = 2.5 if is_critical else 1.0
-            nx.draw_networkx_edges(G, pos, edgelist=[edge], edge_color=color, width=width, ax=ax, arrows=True)
+            edge_color = '#FF0000' if is_critical else '#333333'
+            edge_width = 2.0 if is_critical else 1.0
+            edge_style = 'solid' if is_critical else 'dashed'
+            
+            nx.draw_networkx_edges(G, pos, edgelist=[edge], 
+                                 edge_color=edge_color, 
+                                 width=edge_width, 
+                                 style=edge_style,
+                                 ax=ax, 
+                                 arrows=True, 
+                                 arrowstyle='->',
+                                 arrowsize=12)
         
-        # Dibujar nodos
+        # Dibujar nodos con información simplificada
+        node_colors = []
+        edge_colors = []
+        labels = {}
+        
+        for node in G.nodes():
+            te = pert_results[node]['te'] if pert_results else activities[node]['duration']
+            is_critical = node in cpm_results['critical_path']
+            
+            # Configurar colores según ruta crítica
+            node_colors.append('#FF6B6B' if is_critical else '#6BB9FF')
+            edge_colors.append('#FF0000' if is_critical else '#0066CC')
+            
+            # Crear etiqueta simplificada
+            labels[node] = f"{node}\n{activities[node]['name']}\n{te:.1f}d"
+        
+        # Dibujar todos los nodos de una vez para mejor rendimiento
+        nx.draw_networkx_nodes(G, pos, node_size=node_size, 
+                              node_color=node_colors, 
+                              edgecolors=edge_colors,
+                              linewidths=1.5,
+                              ax=ax)
+        
+        # Dibujar etiquetas
+        nx.draw_networkx_labels(G, pos, labels, font_size=8, 
+                               font_family='sans-serif',
+                               ax=ax)
+        
+        # Añadir información adicional en posiciones estratégicas
         for node in G.nodes():
             x, y = pos[node]
             es = cpm_results['es'][node]
@@ -200,37 +242,41 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             ls = cpm_results['ls'][node]
             lf = cpm_results['lf'][node]
             slack = cpm_results['slack'][node]
-            te = pert_results[node]['te'] if pert_results else activities[node]['duration']
             
-            # Determinar colores según ruta crítica
-            node_color = 'lightcoral' if node in cpm_results['critical_path'] else 'lightblue'
-            edge_color = 'red' if node in cpm_results['critical_path'] else 'blue'
-            
-            # Dibujar nodo
-            circ = Circle((x, y), node_radius, fill=True, color=node_color, ec=edge_color, lw=1.5)
-            ax.add_patch(circ)
-            
-            # Texto del nodo (simplificado para mejor visualización)
-            ax.text(x, y, f"{node}\n{activities[node]['name']}\nTE={te:.1f}d", 
-                   fontsize=8, ha='center', va='center')
-            
-            # Información de tiempos alrededor del nodo
-            ax.text(x-node_radius*1.2, y+node_radius*0.8, f"ES={es:.0f}", fontsize=7, color='darkgreen')
-            ax.text(x+node_radius*1.2, y+node_radius*0.8, f"EF={ef:.0f}", fontsize=7, color='darkgreen')
-            ax.text(x-node_radius*1.2, y-node_radius*0.8, f"LS={ls:.0f}", fontsize=7, color='darkorange')
-            ax.text(x+node_radius*1.2, y-node_radius*0.8, f"LF={lf:.0f}", fontsize=7, color='darkorange')
+            # Mostrar solo información clave alrededor del nodo
+            ax.text(x, y+0.1, f"ES:{es:.0f} | EF:{ef:.0f}", 
+                   fontsize=7, ha='center', va='bottom', color='#006600')
+            ax.text(x, y-0.1, f"LS:{ls:.0f} | LF:{lf:.0f}", 
+                   fontsize=7, ha='center', va='top', color='#CC6600')
             
             if slack > 0.01:
-                ax.text(x, y-node_radius*1.5, f"H:{slack:.0f}", fontsize=8, color='purple')
+                ax.text(x, y-0.15, f"Holgura: {slack:.0f}", 
+                       fontsize=7, ha='center', va='top', color='#660066')
 
-        # Títulos y leyenda
-        plt.title("DIAGRAMA DE RED PERT-CPM\nProyecto: Construcción de Vivienda", fontsize=12)
-        plt.axis('off')
+        # Títulos y leyenda optimizados
+        ax.set_title("DIAGRAMA DE RED PERT-CPM", fontsize=12, pad=20)
+        ax.text(0.5, 1.02, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea", 
+               fontsize=9, ha='center', va='bottom', transform=ax.transAxes)
         
-        # Guardar imagen
-        img_path = "diagrama_pert_cpm.png"
+        # Leyenda simplificada
+        legend_elements = [
+            plt.Line2D([0], [0], color='#FF0000', lw=2, label='Ruta Crítica'),
+            plt.Line2D([0], [0], color='#333333', lw=1, linestyle='dashed', label='Ruta Normal'),
+            plt.Line2D([0], [0], marker='o', color='w', label='Actividad Crítica',
+                      markerfacecolor='#FF6B6B', markersize=10),
+            plt.Line2D([0], [0], marker='o', color='w', label='Actividad Normal',
+                      markerfacecolor='#6BB9FF', markersize=10)
+        ]
+        
+        ax.legend(handles=legend_elements, loc='upper right', 
+                 bbox_to_anchor=(1.15, 1), fontsize=8, framealpha=0.9)
+        
+        ax.axis('off')
         plt.tight_layout()
-        plt.savefig(img_path, dpi=120, bbox_inches='tight')
+        
+        # Guardar imagen con calidad optimizada
+        img_path = "diagrama_pert_cpm.png"
+        fig.savefig(img_path, dpi=120, bbox_inches='tight', facecolor='white')
         plt.close(fig)
         
         return img_path
@@ -336,13 +382,13 @@ def main():
             
             st.subheader("2. Diagrama de Red PERT-CPM")
             try:
-                # Reducir tamaño para mejor visualización
+                # Tamaño optimizado para Streamlit
                 img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
-                                               fig_width=12, fig_height=8, node_radius=15)
+                                       fig_width=10, fig_height=7, node_size=2000)
                 
                 if img_path:
-                    # Mostrar imagen directamente desde matplotlib
-                    st.image(img_path, caption="Diagrama de Red PERT-CPM", use_container_width=True)
+                    # Mostrar imagen con ancho ajustado
+                    st.image(img_path, caption="Diagrama de Red PERT-CPM", width=900)
                     
                     # Botón de descarga
                     with open(img_path, "rb") as img_file:
