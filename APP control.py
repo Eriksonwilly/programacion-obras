@@ -164,10 +164,12 @@ def calculate_cpm(activities, pert_results=None):
             'total_duration': 0
         }
 
-def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=16.5, fig_height=11.7, node_radius=18, max_nodes=30):
+def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=12, fig_height=8, node_radius=15, max_nodes=30):
     try:
-        gc.collect()
+        # Limpiar cualquier figura previa
         plt.close('all')
+        
+        # Crear el grafo
         G = nx.DiGraph()
         for activity in activities:
             G.add_node(activity)
@@ -175,34 +177,22 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             for pred in activities[activity]['predecessors']:
                 G.add_edge(pred, activity)
 
-        # Limitar el número de nodos para evitar consumo excesivo de memoria
-        if len(G.nodes) > max_nodes:
-            st.warning(f"El diagrama tiene más de {max_nodes} actividades. Solo se mostrarán las primeras {max_nodes}.")
-            limited_nodes = list(G.nodes)[:max_nodes]
-            G = G.subgraph(limited_nodes)
-            # También limitar los resultados de cpm y pert
-            cpm_results = {k: {n: v[n] for n in limited_nodes if n in v} if isinstance(v, dict) else v for k, v in cpm_results.items()}
-            pert_results = {n: pert_results[n] for n in limited_nodes if n in pert_results}
-            activities = {n: activities[n] for n in limited_nodes if n in activities}
-
-        # Usar spring_layout eficiente
-        pos = nx.spring_layout(G, k=0.5, iterations=20, seed=42)
-
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor='white')
-        plt.rcParams['font.size'] = 9
-        plt.rcParams['axes.linewidth'] = 1.5
-        plt.rcParams['lines.linewidth'] = 2
-
+        # Configurar el layout
+        pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
+        
+        # Crear figura con tamaño más manejable
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=100)
+        plt.rcParams['font.size'] = 8
+        plt.rcParams['axes.linewidth'] = 1.0
+        
+        # Dibujar aristas
         for edge in G.edges():
             is_critical = edge[0] in cpm_results['critical_path'] and edge[1] in cpm_results['critical_path']
-            color = '#FF0000' if is_critical else '#333333'
-            width = 3 if is_critical else 1.5
-            alpha = 0.9 if is_critical else 0.7
-            ax.annotate('', xy=pos[edge[1]], xytext=pos[edge[0]],
-                        arrowprops=dict(arrowstyle="->", color=color, lw=width, 
-                                      shrinkA=node_radius+3, shrinkB=node_radius+3,
-                                      alpha=alpha, mutation_scale=20))
-
+            color = 'red' if is_critical else 'gray'
+            width = 2.5 if is_critical else 1.0
+            nx.draw_networkx_edges(G, pos, edgelist=[edge], edge_color=color, width=width, ax=ax, arrows=True)
+        
+        # Dibujar nodos
         for node in G.nodes():
             x, y = pos[node]
             es = cpm_results['es'][node]
@@ -211,77 +201,40 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             lf = cpm_results['lf'][node]
             slack = cpm_results['slack'][node]
             te = pert_results[node]['te'] if pert_results else activities[node]['duration']
-            is_critical = node in cpm_results['critical_path']
-            if is_critical:
-                node_color = '#FFE6E6'
-                edge_color = '#FF0000'
-                edge_width = 2.5
-            else:
-                node_color = '#E6F3FF'
-                edge_color = '#0066CC'
-                edge_width = 1.5
-            circ = Circle((x, y), node_radius, fill=True, lw=edge_width, 
-                         color=node_color, ec=edge_color, alpha=0.95)
+            
+            # Determinar colores según ruta crítica
+            node_color = 'lightcoral' if node in cpm_results['critical_path'] else 'lightblue'
+            edge_color = 'red' if node in cpm_results['critical_path'] else 'blue'
+            
+            # Dibujar nodo
+            circ = Circle((x, y), node_radius, fill=True, color=node_color, ec=edge_color, lw=1.5)
             ax.add_patch(circ)
-            if is_critical:
-                circ2 = Circle((x, y), node_radius+3, fill=False, lw=3, color='#FF0000')
-                ax.add_patch(circ2)
-            ax.text(x, y+node_radius*0.5, f"{node}", fontsize=12, ha='center', va='center', 
-                   fontweight='bold', color='#003366',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor=edge_color))
-            activity_name = activities[node]['name']
-            if len(activity_name) > 18:
-                words = activity_name.split()
-                if len(words) > 2:
-                    activity_name = ' '.join(words[:2]) + '\n' + ' '.join(words[2:])
-                else:
-                    activity_name = activity_name[:15] + "..."
-            ax.text(x, y, activity_name, fontsize=8, ha='center', va='center', 
-                   color='#000000', fontweight='normal', 
-                   bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.9))
-            ax.text(x, y-node_radius*0.5, f"TE={te:.1f}d", fontsize=10, ha='center', va='center', 
-                   color='#066666', fontweight='bold', 
-                   bbox=dict(boxstyle="round,pad=0.2", facecolor='#E8F5E8', alpha=0.9))
-            ax.text(x-node_radius*0.7, y+node_radius*0.2, f"ES={es:.0f}", fontsize=7, 
-                   ha='center', va='center', color='#066666', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
-            ax.text(x+node_radius*0.7, y+node_radius*0.2, f"EF={ef:.0f}", fontsize=7, 
-                   ha='center', va='center', color='#066666', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#E8F5E8', alpha=0.8))
-            ax.text(x-node_radius*0.7, y-node_radius*0.2, f"LS={ls:.0f}", fontsize=7, 
-                   ha='center', va='center', color='#CC6600', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
-            ax.text(x+node_radius*0.7, y-node_radius*0.2, f"LF={lf:.0f}", fontsize=7, 
-                   ha='center', va='center', color='#CC6600', fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.1", facecolor='#FFF2E6', alpha=0.8))
+            
+            # Texto del nodo (simplificado para mejor visualización)
+            ax.text(x, y, f"{node}\n{activities[node]['name']}\nTE={te:.1f}d", 
+                   fontsize=8, ha='center', va='center')
+            
+            # Información de tiempos alrededor del nodo
+            ax.text(x-node_radius*1.2, y+node_radius*0.8, f"ES={es:.0f}", fontsize=7, color='darkgreen')
+            ax.text(x+node_radius*1.2, y+node_radius*0.8, f"EF={ef:.0f}", fontsize=7, color='darkgreen')
+            ax.text(x-node_radius*1.2, y-node_radius*0.8, f"LS={ls:.0f}", fontsize=7, color='darkorange')
+            ax.text(x+node_radius*1.2, y-node_radius*0.8, f"LF={lf:.0f}", fontsize=7, color='darkorange')
+            
             if slack > 0.01:
-                ax.text(x, y-node_radius*0.8, f"H:{slack:.0f}", fontsize=8, ha='center', va='center', 
-                       color='#660066', fontweight='bold',
-                       bbox=dict(boxstyle="round,pad=0.2", facecolor='#F0E6F0', alpha=0.9))
-        ax.text(0.5, 1.08, "DIAGRAMA DE RED PERT-CPM", fontsize=18, ha='center', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
-                 bbox=dict(boxstyle="round,pad=0.5", facecolor='#E6F3FF', alpha=0.9))
-        ax.text(0.5, 1.04, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea", fontsize=14, ha='center', va='center', transform=ax.transAxes, color='#033666', fontweight='bold')
-        ax.text(0.5, 1.01, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ", fontsize=11, ha='center', va='center', transform=ax.transAxes, color='#666666')
-        legend_x = 1.02
-        legend_y = 0.95
-        ax.text(legend_x, legend_y, "LEYENDA DEL DIAGRAMA", fontsize=12, ha='left', va='center', transform=ax.transAxes, fontweight='bold', color='#003366',
-                 bbox=dict(boxstyle="round,pad=0.3", facecolor='#F5F5F5', alpha=0.9))
-        ax.text(legend_x, legend_y-0.04, "● Ruta Crítica (Rojo)", fontsize=10, ha='left', va='center', transform=ax.transAxes, color='#FF0000', fontweight='bold')
-        ax.text(legend_x, legend_y-0.08, "● Actividad Normal (Azul)", fontsize=10, ha='left', va='center', transform=ax.transAxes, color='#0066CC')
-        ax.text(legend_x, legend_y-0.12, "ES: Early Start (Verde)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#066666', fontweight='bold')
-        ax.text(legend_x, legend_y-0.16, "EF: Early Finish (Verde)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#066666', fontweight='bold')
-        ax.text(legend_x, legend_y-0.20, "LS: Late Start (Naranja)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#CC6600', fontweight='bold')
-        ax.text(legend_x, legend_y-0.24, "LF: Late Finish (Naranja)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#CC6600', fontweight='bold')
-        ax.text(legend_x, legend_y-0.28, "TE: Tiempo Esperado (Verde)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#066666', fontweight='bold')
-        ax.text(legend_x, legend_y-0.32, "H: Holgura (Púrpura)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#660066', fontweight='bold')
-        ax.axis('off')
-        plt.subplots_adjust(left=0.02, right=0.88, top=0.95, bottom=0.2)
-        # Guardar imagen automáticamente
-        img_path = "diagrama.png"
-        fig.savefig(img_path, dpi=120, bbox_inches='tight', facecolor='white')
+                ax.text(x, y-node_radius*1.5, f"H:{slack:.0f}", fontsize=8, color='purple')
+
+        # Títulos y leyenda
+        plt.title("DIAGRAMA DE RED PERT-CPM\nProyecto: Construcción de Vivienda", fontsize=12)
+        plt.axis('off')
+        
+        # Guardar imagen
+        img_path = "diagrama_pert_cpm.png"
+        plt.tight_layout()
+        plt.savefig(img_path, dpi=120, bbox_inches='tight')
         plt.close(fig)
-        gc.collect()
+        
         return img_path
+        
     except Exception as e:
         st.error(f"Error al generar diagrama: {str(e)}")
         import traceback
@@ -381,18 +334,29 @@ def main():
             cpm_results = calculate_cpm(activities, pert_results)
             st.success("¡Cálculo realizado!")
             
-            st.subheader("2. Diagrama de Red PERT-CPM (con tiempos esperados y especialidad)")
+            st.subheader("2. Diagrama de Red PERT-CPM")
             try:
-                img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, fig_width=16.5, fig_height=11.7, node_radius=18)
-                if img_path and os.path.exists(img_path):
+                # Reducir tamaño para mejor visualización
+                img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
+                                               fig_width=12, fig_height=8, node_radius=15)
+                
+                if img_path:
+                    # Mostrar imagen directamente desde matplotlib
                     st.image(img_path, caption="Diagrama de Red PERT-CPM", use_container_width=True)
+                    
+                    # Botón de descarga
                     with open(img_path, "rb") as img_file:
-                        st.download_button("Descargar Diagrama como PNG", data=img_file, file_name="diagrama.png", mime="image/png")
+                        st.download_button(
+                            "Descargar Diagrama como PNG", 
+                            data=img_file, 
+                            file_name="diagrama_pert_cpm.png", 
+                            mime="image/png"
+                        )
                 else:
-                    st.warning("No se pudo generar el diagrama debido a limitaciones de memoria. Pruebe reducir el tamaño del diagrama o reinicie la app.")
+                    st.warning("No se pudo generar el diagrama.")
+                    
             except Exception as diagram_error:
-                st.error(f"Error al generar diagrama: {str(diagram_error)}")
-                st.info("Sugerencia: Si el error es 'bad allocation', pruebe reducir el tamaño del diagrama o reinicie la app.")
+                st.error(f"Error al mostrar diagrama: {str(diagram_error)}")
             
             st.subheader("3. Tabla de Actividades y Resultados PERT")
             try:
