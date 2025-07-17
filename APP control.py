@@ -163,7 +163,7 @@ def calculate_cpm(activities, pert_results=None):
             'total_duration': 0
         }
 
-def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=16, fig_height=12, node_radius=18):
+def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=23.4, fig_height=16.5, node_radius=28):
     try:
         # Limpiar memoria antes de crear el diagrama
         gc.collect()
@@ -301,8 +301,8 @@ def export_to_pdf(fig, table_df):
         gc.collect()
         
         buf = io.BytesIO()
-        # Guardar la figura con el mismo tamaño y DPI que en pantalla
-        fig.set_size_inches(14, 10)
+        # Guardar la figura con el tamaño A2 landscape solo para PDF
+        fig.set_size_inches(23.4, 16.5)
         fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', 
                    facecolor='white', edgecolor='none')
         buf.seek(0)
@@ -413,16 +413,16 @@ def main():
             # Generar diagrama con parámetros optimizados
             try:
                 fig = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
-                                          fig_width=12, fig_height=7, node_radius=20)
+                                          fig_width=16.5, fig_height=11.7, node_radius=18)
                 
                 if fig is not None:
                     st.pyplot(fig, use_container_width=False)
                     plt.close(fig)  # Cerrar figura para liberar memoria
                 else:
-                    st.warning("No se pudo generar el diagrama debido a limitaciones de memoria.")
+                    st.warning("No se pudo generar el diagrama debido a limitaciones de memoria. Pruebe reducir el tamaño del diagrama o reinicie la app.")
             except Exception as diagram_error:
                 st.error(f"Error al generar diagrama: {str(diagram_error)}")
-                st.info("Continuando con el resto de los resultados...")
+                st.info("Sugerencia: Si el error es 'bad allocation', pruebe reducir el tamaño del diagrama o reinicie la app.")
             
             st.subheader("3. Tabla de Actividades y Resultados PERT")
             try:
