@@ -12,6 +12,7 @@ from reportlab.lib.pagesizes import A2, landscape
 from reportlab.lib.utils import ImageReader
 from PIL import Image
 import gc
+import os
 
 # Configurar límites de PIL para evitar DecompressionBombError
 Image.MAX_IMAGE_PIXELS = None
@@ -163,7 +164,7 @@ def calculate_cpm(activities, pert_results=None):
             'total_duration': 0
         }
 
-def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=16.5, fig_height=11.7, node_radius=18):
+def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=False, fig_width=16.5, fig_height=11.7, node_radius=18, max_nodes=30):
     try:
         gc.collect()
         plt.close('all')
@@ -174,17 +175,20 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             for pred in activities[activity]['predecessors']:
                 G.add_edge(pred, activity)
 
-        # Intentar usar layout jerárquico (graphviz_layout)
-        try:
-            pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
-        except Exception:
-            try:
-                pos = nx.spring_layout(G, seed=42, k=2, iterations=50)
-            except Exception:
-                pos = nx.circular_layout(G)
+        # Limitar el número de nodos para evitar consumo excesivo de memoria
+        if len(G.nodes) > max_nodes:
+            st.warning(f"El diagrama tiene más de {max_nodes} actividades. Solo se mostrarán las primeras {max_nodes}.")
+            limited_nodes = list(G.nodes)[:max_nodes]
+            G = G.subgraph(limited_nodes)
+            # También limitar los resultados de cpm y pert
+            cpm_results = {k: {n: v[n] for n in limited_nodes if n in v} if isinstance(v, dict) else v for k, v in cpm_results.items()}
+            pert_results = {n: pert_results[n] for n in limited_nodes if n in pert_results}
+            activities = {n: activities[n] for n in limited_nodes if n in activities}
 
-        # Ajustar tamaño a A3 (11.7 x 16.5 pulgadas)
-        fig, ax = plt.subplots(figsize=(16.5, 11.7), facecolor='white')
+        # Usar spring_layout eficiente
+        pos = nx.spring_layout(G, k=0.5, iterations=20, seed=42)
+
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor='white')
         plt.rcParams['font.size'] = 9
         plt.rcParams['axes.linewidth'] = 1.5
         plt.rcParams['lines.linewidth'] = 2
@@ -272,20 +276,21 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
         ax.text(legend_x, legend_y-0.32, "H: Holgura (Púrpura)", fontsize=9, ha='left', va='center', transform=ax.transAxes, color='#660066', fontweight='bold')
         ax.axis('off')
         plt.subplots_adjust(left=0.02, right=0.88, top=0.95, bottom=0.2)
-        return fig
+        # Guardar imagen automáticamente
+        img_path = "diagrama.png"
+        fig.savefig(img_path, dpi=120, bbox_inches='tight', facecolor='white')
+        plt.close(fig)
+        gc.collect()
+        return img_path
     except Exception as e:
         st.error(f"Error al generar diagrama: {str(e)}")
         import traceback
         st.text(traceback.format_exc())
         return None
 
-def export_to_pdf(fig, table_df):
+def export_to_pdf(img_path, table_df):
     try:
         gc.collect()
-        buf = io.BytesIO()
-        fig.set_size_inches(23.4, 16.5)
-        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white', edgecolor='none')
-        buf.seek(0)
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=landscape(A2))
         c.setFont("Helvetica-Bold", 16)
@@ -294,8 +299,11 @@ def export_to_pdf(fig, table_df):
         c.drawString(40, 530, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea")
         c.drawString(40, 515, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ")
         try:
-            img = ImageReader(buf)
-            c.drawImage(img, 40, 250, width=900, height=500, mask='auto')
+            if img_path and os.path.exists(img_path):
+                img = ImageReader(img_path)
+                c.drawImage(img, 40, 250, width=900, height=500, mask='auto')
+            else:
+                c.drawString(40, 300, "No se pudo cargar el diagrama.")
         except Exception as e:
             c.drawString(40, 300, f"Error al insertar diagrama: {str(e)}")
         x0, y0 = 40, 220
@@ -374,15 +382,12 @@ def main():
             st.success("¡Cálculo realizado!")
             
             st.subheader("2. Diagrama de Red PERT-CPM (con tiempos esperados y especialidad)")
-            
-            # Generar diagrama con parámetros optimizados
             try:
-                fig = draw_pert_cpm_diagram(activities, cpm_results, pert_results, 
-                                          fig_width=16.5, fig_height=11.7, node_radius=18)
-                
-                if fig is not None:
-                    st.pyplot(fig, use_container_width=False)
-                    plt.close(fig)  # Cerrar figura para liberar memoria
+                img_path = draw_pert_cpm_diagram(activities, cpm_results, pert_results, fig_width=16.5, fig_height=11.7, node_radius=18)
+                if img_path and os.path.exists(img_path):
+                    st.image(img_path, caption="Diagrama de Red PERT-CPM", use_container_width=True)
+                    with open(img_path, "rb") as img_file:
+                        st.download_button("Descargar Diagrama como PNG", data=img_file, file_name="diagrama.png", mime="image/png")
                 else:
                     st.warning("No se pudo generar el diagrama debido a limitaciones de memoria. Pruebe reducir el tamaño del diagrama o reinicie la app.")
             except Exception as diagram_error:
@@ -486,8 +491,8 @@ def main():
             
             st.subheader("Exportar resultados a PDF")
             try:
-                if fig is not None and 'table_df' in locals():
-                    pdf_buf = export_to_pdf(fig, table_df)
+                if img_path and os.path.exists(img_path) and 'table_df' in locals():
+                    pdf_buf = export_to_pdf(img_path, table_df)
                     if pdf_buf is not None:
                         st.download_button("Descargar PDF de Diagrama y Tabla", 
                                          data=pdf_buf.getvalue(), 
