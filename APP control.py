@@ -508,8 +508,12 @@ def main():
                     code = row['Actividad']
                     if code in cpm_results['es']:
                         es = cpm_results['es'][code]
-                        start = start_date + timedelta(days=es)
-                        materials_df.at[idx, 'Fecha Necesaria'] = start.strftime('%Y-%m-%d')
+                        start = start_date + timedelta(days=int(es))
+                        if isinstance(start, datetime):
+                            materials_df.at[idx, 'Fecha Necesaria'] = start.strftime('%Y-%m-%d')
+                        else:
+                            # Si por alguna razón start no es datetime, conviértelo
+                            materials_df.at[idx, 'Fecha Necesaria'] = (datetime.now() + timedelta(days=int(es))).strftime('%Y-%m-%d')
                 
                 st.dataframe(materials_df, use_container_width=True)
             except Exception as materials_error:
