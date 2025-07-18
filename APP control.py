@@ -22,6 +22,16 @@ try:
 except ImportError:
     KALEIDO_AVAILABLE = False
 
+def check_dependencies():
+    """Verifica si plotly-orca está instalado"""
+    try:
+        import plotly.io as pio
+        if 'orca' in pio.orca.status:
+            return True
+        return False
+    except:
+        return False
+
 # Configurar límites de PIL para evitar DecompressionBombError
 Image.MAX_IMAGE_PIXELS = None
 
@@ -419,6 +429,17 @@ def main():
             st.error(f"Error de importación: {str(import_error)}. Por favor instale las dependencias con: pip install -r requirements.txt")
             return
         
+        # Verificar y mostrar estado de dependencias para exportación
+        ORCA_AVAILABLE = check_dependencies()
+        if not KALEIDO_AVAILABLE and not ORCA_AVAILABLE:
+            st.warning("""
+                **Nota:** Para una mejor exportación de imágenes, instale alguno de estos paquetes:
+                - `pip install kaleido` (recomendado)
+                - `pip install plotly-orca`
+                
+                Sin estos, la exportación del diagrama Gantt podría no funcionar correctamente.
+            """)
+        
         activities = get_project_data()
         st.title("Presentación Integral PERT-CPM y Control de Obras")
         st.markdown("""
@@ -585,27 +606,66 @@ def main():
                     if 'fig_gantt' in locals():
                         try:
                             gantt_img_path = "diagrama_gantt.png"
-                            # Verificar si kaleido está disponible
+                            
+                            # Intentar con kaleido primero
                             if KALEIDO_AVAILABLE:
-                                fig_gantt.write_image(gantt_img_path, engine='kaleido', width=1000, height=600, scale=2)
+                                try:
+                                    fig_gantt.write_image(gantt_img_path, engine='kaleido', width=1000, height=600, scale=2)
+                                except Exception as kaleido_error:
+                                    st.warning("Kaleido está instalado pero no pudo exportar la imagen. Intentando alternativas...")
+                                    # Intentar con orca si está disponible
+                                    if ORCA_AVAILABLE:
+                                        try:
+                                            fig_gantt.write_image(gantt_img_path, engine='orca', width=1000, height=600, scale=2)
+                                        except:
+                                            # Último intento sin engine específico
+                                            fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
+                                    else:
+                                        fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
                             else:
-                                # Intentar sin especificar engine
+                                # Si kaleido no está disponible, intentar con plotly directamente
                                 fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
+                                
                         except Exception as gantt_img_error:
                             st.warning("""
-                                No se pudo guardar el diagrama Gantt como imagen. 
-                                Para habilitar esta función, instale Kaleido con: 
-                                `pip install kaleido`
+                                No se pudo guardar el diagrama Gantt como imagen usando Plotly. 
+                                Soluciones posibles:
+                                1. Instale Google Chrome en su sistema
+                                2. O instale Kaleido con: `pip install kaleido`
+                                3. O instale Orca con: `pip install plotly-orca`
                             """)
-                            st.warning(f"Detalle del error: {str(gantt_img_error)}")
-                            # Alternativa: guardar como HTML temporal
+                            
+                            # Alternativa: Guardar como imagen usando matplotlib
                             try:
-                                gantt_img_path = "diagrama_gantt.html"
-                                fig_gantt.write_html(gantt_img_path)
-                                st.warning("Se guardó el diagrama Gantt como HTML temporal. No se incluirá en el PDF.")
-                                gantt_img_path = None  # No incluirlo en el PDF
-                            except Exception as html_error:
-                                st.warning(f"No se pudo guardar el diagrama Gantt en ningún formato: {str(html_error)}")
+                                st.warning("Intentando exportar con matplotlib como alternativa...")
+                                plt.figure(figsize=(12, 6))
+                                for esp in gantt_df['Especialidad'].unique():
+                                    df_esp = gantt_df[gantt_df['Especialidad'] == esp]
+                                    plt.barh(df_esp['Actividad'], 
+                                            (df_esp['Fin'] - df_esp['Inicio']).dt.days, 
+                                            left=df_esp['Inicio'], 
+                                            label=esp)
+                                
+                                plt.xlabel('Fecha')
+                                plt.ylabel('Actividad')
+                                plt.title('Diagrama de Gantt')
+                                plt.legend()
+                                plt.tight_layout()
+                                gantt_img_path = "diagrama_gantt_matplotlib.png"
+                                plt.savefig(gantt_img_path, bbox_inches='tight', dpi=120)
+                                plt.close()
+                                st.success("Se generó el diagrama Gantt con matplotlib como alternativa")
+                                
+                            except Exception as matplotlib_error:
+                                st.warning(f"No se pudo generar el diagrama Gantt con matplotlib: {str(matplotlib_error)}")
+                                # Último recurso: guardar como HTML
+                                try:
+                                    gantt_img_path = "diagrama_gantt.html"
+                                    fig_gantt.write_html(gantt_img_path)
+                                    st.warning("Se guardó el diagrama Gantt como HTML temporal. No se incluirá en el PDF.")
+                                    gantt_img_path = None
+                                except Exception as html_error:
+                                    st.warning(f"No se pudo guardar el diagrama Gantt en ningún formato: {str(html_error)}")
                     
                     if img_path and os.path.exists(img_path) and 'table_df' in locals():
                         pdf_buf = export_to_pdf(img_path, table_df, gantt_img_path)
