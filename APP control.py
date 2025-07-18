@@ -345,105 +345,125 @@ def export_to_pdf(img_path, table_df, gantt_img_path=None):
         gc.collect()
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=landscape(A2))
-        
+        from datetime import datetime
         # Configurar márgenes y estilos
         left_margin = 40
         right_margin = 40
         top_margin = 750
         section_spacing = 30
-        
         # Encabezado del reporte
         c.setFont("Helvetica-Bold", 16)
         c.drawString(left_margin, top_margin, "REPORTE PERT-CPM - CONTROL DE OBRAS")
         c.setFont("Helvetica", 12)
         c.drawString(left_margin, top_margin - 20, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea")
         c.drawString(left_margin, top_margin - 40, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ")
-        
+        c.drawString(left_margin, top_margin - 60, "Elaborado por: Erikson Florez Valdivia UNA - Puno Ing Civil")
         # Sección 1: Diagrama de Red
-        current_y = top_margin - 70
+        current_y = top_margin - 90
         c.setFont("Helvetica-Bold", 14)
         c.drawString(left_margin, current_y, "1. Diagrama de Red PERT-CPM")
         current_y -= 20
-        
         try:
             if img_path and os.path.exists(img_path):
-                img = ImageReader(img_path)
-                # Ajustar tamaño para mejor visualización en PDF
-                img_width = 900
-                img_height = 500
-                c.drawImage(img, left_margin, current_y - img_height, 
+                img = Image.open(img_path)
+                img_width = 1000
+                img_height = int(img.height * (img_width / img.width))
+                resized_img_path = "diagrama_pert_cpm_resized.png"
+                img.resize((img_width, img_height), Image.LANCZOS).save(resized_img_path)
+                c.drawImage(resized_img_path, left_margin, current_y - img_height, 
                           width=img_width, height=img_height, mask='auto')
                 current_y -= img_height + section_spacing
+                os.remove(resized_img_path)
             else:
                 c.drawString(left_margin, current_y, "No se pudo cargar el diagrama de red.")
                 current_y -= section_spacing
         except Exception as e:
             c.drawString(left_margin, current_y, f"Error al insertar diagrama de red: {str(e)}")
             current_y -= section_spacing
-        
         # Sección 2: Diagrama de Gantt
         if gantt_img_path and os.path.exists(gantt_img_path):
             c.setFont("Helvetica-Bold", 14)
-            c.drawString(left_margin, current_y, "2. Diagrama de Gantt")
+            c.drawString(left_margin, current_y, "2. Diagrama de Gantt - Cronograma de Ejecución")
             current_y -= 20
-            
             try:
-                gantt_img = ImageReader(gantt_img_path)
-                gantt_width = 900
-                gantt_height = 400
-                c.drawImage(gantt_img, left_margin, current_y - gantt_height, 
+                gantt_img = Image.open(gantt_img_path)
+                gantt_width = 1000
+                gantt_height = int(gantt_img.height * (gantt_width / gantt_img.width))
+                max_gantt_height = 500
+                if gantt_height > max_gantt_height:
+                    gantt_height = max_gantt_height
+                    gantt_width = int(gantt_img.width * (gantt_height / gantt_img.height))
+                resized_gantt_path = "diagrama_gantt_resized.png"
+                gantt_img.resize((gantt_width, gantt_height), Image.LANCZOS).save(resized_gantt_path)
+                c.setFillColorRGB(0.95, 0.95, 0.95)
+                c.rect(left_margin-5, current_y - gantt_height -5, 
+                      gantt_width+10, gantt_height+10, fill=1, stroke=0)
+                c.setFillColorRGB(0, 0, 0)
+                c.drawImage(resized_gantt_path, left_margin, current_y - gantt_height, 
                           width=gantt_width, height=gantt_height, mask='auto')
-                current_y -= gantt_height + section_spacing
+                current_y -= gantt_height + section_spacing + 20
+                os.remove(resized_gantt_path)
             except Exception as e:
                 c.drawString(left_margin, current_y, f"Error al insertar diagrama Gantt: {str(e)}")
                 current_y -= section_spacing
-        
         # Sección 3: Tabla de actividades
         c.setFont("Helvetica-Bold", 14)
         c.drawString(left_margin, current_y, "3. Tabla de Actividades y Resultados PERT")
         current_y -= 20
-        
-        # Configurar tabla
-        col_widths = [50, 180, 70, 50, 50, 50, 50, 80]  # Ajustar anchos de columnas
-        row_height = 15
+        col_widths = [60, 200, 80, 60, 60, 60, 60, 100]
+        row_height = 18
         headers = list(table_df.columns)
-        
-        # Dibujar encabezados de tabla
-        c.setFont("Helvetica-Bold", 9)
+        c.setFillColorRGB(0.8, 0.8, 0.8)
+        c.rect(left_margin, current_y - row_height + 5, sum(col_widths), row_height, fill=1, stroke=0)
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica-Bold", 10)
         for i, h in enumerate(headers):
             c.drawString(left_margin + sum(col_widths[:i]), current_y, str(h))
         current_y -= row_height
-        
-        # Dibujar filas de la tabla
-        c.setFont("Helvetica", 8)
+        c.setFont("Helvetica", 9)
         for idx, row in table_df.iterrows():
-            # Verificar si necesitamos nueva página
             if current_y < 100:
                 c.showPage()
                 current_y = top_margin - 40
-                # Redibujar encabezados si hay cambio de página
-                c.setFont("Helvetica-Bold", 9)
+                c.setFillColorRGB(0.8, 0.8, 0.8)
+                c.rect(left_margin, current_y - row_height + 5, sum(col_widths), row_height, fill=1, stroke=0)
+                c.setFillColorRGB(0, 0, 0)
+                c.setFont("Helvetica-Bold", 10)
                 for i, h in enumerate(headers):
                     c.drawString(left_margin + sum(col_widths[:i]), current_y, str(h))
                 current_y -= row_height
-                c.setFont("Helvetica", 8)
-            
+                c.setFont("Helvetica", 9)
+            if idx % 2 == 0:
+                c.setFillColorRGB(0.95, 0.95, 0.95)
+                c.rect(left_margin, current_y - row_height + 5, sum(col_widths), row_height, fill=1, stroke=0)
+                c.setFillColorRGB(0, 0, 0)
             for i, val in enumerate(row):
                 text_val = str(round(val,2)) if isinstance(val, float) else str(val)
-                c.drawString(left_margin + sum(col_widths[:i]), current_y, text_val)
+                if i in [2,3,4,5,6]:
+                    c.drawCentredString(left_margin + sum(col_widths[:i]) + col_widths[i]/2, 
+                                      current_y, text_val)
+                else:
+                    c.drawString(left_margin + sum(col_widths[:i]), current_y, text_val)
             current_y -= row_height
-        
         c.showPage()
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(A2[0]/2, 700, "Resumen del Proyecto")
+        c.setFont("Helvetica", 12)
+        c.drawString(100, 650, f"Duración total del proyecto: {table_df['Duración Esperada'].sum():.1f} días")
+        y_pos = 620
+        for esp in table_df['Especialidad'].unique():
+            duracion_esp = table_df[table_df['Especialidad']==esp]['Duración Esperada'].sum()
+            c.drawString(100, y_pos, f"{esp}: {duracion_esp:.1f} días")
+            y_pos -= 30
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(100, y_pos-40, "Documento generado el: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         c.save()
         pdf_buf.seek(0)
-        
-        # Guardar automáticamente
         try:
             with open("PERT_CPM_RESULTADOS.pdf", "wb") as f:
                 f.write(pdf_buf.getvalue())
         except Exception as e:
             st.warning(f"No se pudo guardar el archivo PDF automáticamente en disco: {str(e)}")
-        
         return pdf_buf
     except Exception as e:
         st.error(f"Error al exportar PDF: {str(e)}")
@@ -633,11 +653,32 @@ def main():
                         import plotly.express as px
                         fig_gantt = px.timeline(gantt_df, x_start='Inicio', x_end='Fin', y='Actividad', 
                                               color='Especialidad', title='Cronograma de Ejecución')
-                        fig_gantt.update_layout(height=600)
+                        fig_gantt.update_layout(
+                            height=800,
+                            font_size=12,
+                            margin=dict(l=50, r=50, b=100, t=100, pad=4),
+                            showlegend=True,
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="right",
+                                x=1
+                            )
+                        )
+                        fig_gantt.update_xaxes(
+                            tickangle=45,
+                            tickformat="%d-%b-%Y",
+                            tickfont=dict(size=10)
+                        )
+                        fig_gantt.update_yaxes(
+                            tickfont=dict(size=10),
+                            autorange="reversed"
+                        )
                         try:
                             st.plotly_chart(fig_gantt, use_container_width=True)
                             gantt_img_path = "diagrama_gantt.png"
-                            fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
+                            fig_gantt.write_image(gantt_img_path, width=1200, height=800, scale=2)
                         except Exception as e:
                             if "kaleido" in str(e).lower():
                                 st.warning("""
