@@ -25,10 +25,10 @@ def check_dependencies():
         'matplotlib': {'min': '3.6.0'},
         'networkx': {'min': '3.0'},
         'numpy': {'min': '1.23.0'},
-        'Pillow': {'min': '9.4.0'},
+        'PIL': {'min': '9.4.0'},  # PIL es el nombre del módulo para Pillow
         'reportlab': {'min': '3.6.0'},
         'plotly': {'min': '5.11.0'},
-        'python-dateutil': {'min': '2.8.2'},
+        'dateutil': {'min': '2.8.2'},  # python-dateutil se importa como dateutil
         'kaleido': {'min': '0.2.1'}
     }
     
@@ -48,7 +48,12 @@ def check_dependencies():
             except ImportError:
                 missing.append('packaging (requerido para verificación de versiones)')
         except ImportError:
-            missing.append(package)
+            # Mapeo de nombres alternativos para mensajes más claros
+            display_name = {
+                'PIL': 'Pillow',
+                'dateutil': 'python-dateutil'
+            }.get(package, package)
+            missing.append(display_name)
     
     return missing, outdated
 
@@ -442,15 +447,38 @@ def main():
         missing, outdated = check_dependencies()
         if missing:
             st.error(f"Paquetes faltantes: {', '.join(missing)}")
-            st.info("Por favor instale las dependencias faltantes con: pip install -r requirements.txt")
-            if st.button("Intentar instalar automáticamente"):
+            st.info("""
+            Puede instalar los paquetes faltantes con uno de estos métodos:
+            1. Automáticamente: Haga clic en el botón 'Instalar paquetes faltantes automáticamente' arriba
+            2. Manualmente desde la terminal: `pip install Pillow python-dateutil`
+            3. Desde el archivo requirements.txt: `pip install -r requirements.txt`
+            """)
+            
+            # Botón para instalar automáticamente
+            if st.button("Instalar paquetes faltantes automáticamente"):
                 try:
                     import subprocess
-                    subprocess.run(["pip", "install", "-r", "requirements.txt"], check=True)
-                    st.success("Instalación completada. Por favor recargue la página.")
+                    import sys
+                    
+                    # Mapeo de nombres de paquetes para pip
+                    package_map = {
+                        'Pillow': 'PIL',
+                        'python-dateutil': 'dateutil'
+                    }
+                    
+                    # Construir lista de paquetes a instalar
+                    packages_to_install = []
+                    for m in missing:
+                        pkg = package_map.get(m, m)
+                        packages_to_install.append(pkg)
+                    
+                    # Instalar los paquetes
+                    subprocess.run([sys.executable, "-m", "pip", "install"] + packages_to_install, check=True)
+                    st.success("¡Paquetes instalados correctamente! Por favor recargue la página.")
                     return
                 except Exception as e:
-                    st.error(f"No se pudo instalar automáticamente: {str(e)}")
+                    st.error(f"Error al instalar paquetes: {str(e)}")
+                    st.info("Puede instalar manualmente con: pip install Pillow python-dateutil")
             return
         
         if outdated:
