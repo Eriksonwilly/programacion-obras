@@ -506,7 +506,7 @@ def main():
         st.markdown("""
         <b>Proyecto:</b> Construcción de Vivienda de Dos Plantas + Azotea  
         <b>Ubicación:</b> Chiclayo, Lambayeque  
-        <b>Elaborado por:</b> Erikson Florez Valdivia 8 años de experiencia en edificación)  
+        <b>Elaborado por:</b> Erikson Florez Valdivia UNA - Puno Ing Civil - Control Obra y Edyficaciones  
         <b>Empresa:</b> CONSORCIO DEJ
         """, unsafe_allow_html=True)
         st.markdown("---")
