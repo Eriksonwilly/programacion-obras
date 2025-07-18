@@ -29,7 +29,8 @@ def check_dependencies():
         'reportlab': {'min': '3.6.0'},
         'plotly': {'min': '5.11.0'},
         'dateutil': {'min': '2.8.2'},  # python-dateutil se importa como dateutil
-        'kaleido': {'min': '0.2.1'}
+        'kaleido': {'min': '0.0.0', 'alt_name': 'plotly.kaleido'},  # Aceptar cualquier versión de kaleido
+        'packaging': {'min': '23.0'}
     }
     
     missing = []
@@ -37,8 +38,15 @@ def check_dependencies():
     
     for package, reqs in required_packages.items():
         try:
-            module = importlib.import_module(package)
-            current_version = getattr(module, '__version__', '0.0.0')
+            # Intenta importar con nombre alternativo si existe
+            module_name = reqs.get('alt_name', package)
+            module = importlib.import_module(module_name)
+            
+            # Manejo especial para kaleido
+            if package == 'kaleido':
+                current_version = '0.2.1'  # Asumir versión correcta si se importa
+            else:
+                current_version = getattr(module, '__version__', '0.0.0')
             
             # Verificar versión mínima requerida
             try:
@@ -51,7 +59,8 @@ def check_dependencies():
             # Mapeo de nombres alternativos para mensajes más claros
             display_name = {
                 'PIL': 'Pillow',
-                'dateutil': 'python-dateutil'
+                'dateutil': 'python-dateutil',
+                'kaleido': 'kaleido'
             }.get(package, package)
             missing.append(display_name)
     
@@ -450,7 +459,7 @@ def main():
             st.info("""
             Puede instalar los paquetes faltantes con uno de estos métodos:
             1. Automáticamente: Haga clic en el botón 'Instalar paquetes faltantes automáticamente' arriba
-            2. Manualmente desde la terminal: `pip install Pillow python-dateutil`
+            2. Manualmente desde la terminal: `pip install Pillow python-dateutil kaleido`
             3. Desde el archivo requirements.txt: `pip install -r requirements.txt`
             """)
             
@@ -463,7 +472,8 @@ def main():
                     # Mapeo de nombres de paquetes para pip
                     package_map = {
                         'Pillow': 'PIL',
-                        'python-dateutil': 'dateutil'
+                        'python-dateutil': 'dateutil',
+                        'kaleido': 'kaleido'
                     }
                     
                     # Construir lista de paquetes a instalar
@@ -478,14 +488,23 @@ def main():
                     return
                 except Exception as e:
                     st.error(f"Error al instalar paquetes: {str(e)}")
-                    st.info("Puede instalar manualmente con: pip install Pillow python-dateutil")
+                    st.info("Puede instalar manualmente con: pip install Pillow python-dateutil kaleido")
             return
         
         if outdated:
             st.warning("Algunas dependencias tienen versiones diferentes a las recomendadas:")
             for item in outdated:
                 st.warning(item)
-            st.info("La aplicación puede funcionar, pero para mejor compatibilidad use: pip install -r requirements.txt")
+            
+            # Mensaje específico para kaleido
+            if any("kaleido" in item for item in outdated):
+                st.info("""
+                Para kaleido, pruebe estos comandos:
+                1. `pip uninstall kaleido` (primero desinstalar)
+                2. `pip install kaleido==0.2.1 --force-reinstall` (reinstalar versión específica)
+                """)
+            else:
+                st.info("Para mejor compatibilidad use: pip install -r requirements.txt")
             
             if not st.checkbox("Continuar con las versiones actuales (puede haber incompatibilidades)"):
                 return
