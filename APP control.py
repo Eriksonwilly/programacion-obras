@@ -18,29 +18,35 @@ import importlib.util
 import sys
 
 def check_dependencies():
-    """Verifica todas las dependencias necesarias"""
-    dependencies = {
-        'streamlit': '1.22.0',
-        'pandas': '1.5.3',
-        'matplotlib': '3.6.3',
-        'networkx': '3.0',
-        'numpy': '1.23.5',
-        'Pillow': '9.4.0',
-        'reportlab': '3.6.12',
-        'plotly': '5.13.1',
-        'python-dateutil': '2.8.2',
-        'kaleido': '0.2.1'
+    """Verifica las dependencias principales con mayor flexibilidad en versiones"""
+    required_packages = {
+        'streamlit': {'min': '1.22.0'},
+        'pandas': {'min': '1.5.0'},
+        'matplotlib': {'min': '3.6.0'},
+        'networkx': {'min': '3.0'},
+        'numpy': {'min': '1.23.0'},
+        'Pillow': {'min': '9.4.0'},
+        'reportlab': {'min': '3.6.0'},
+        'plotly': {'min': '5.11.0'},
+        'python-dateutil': {'min': '2.8.2'},
+        'kaleido': {'min': '0.2.1'}
     }
     
     missing = []
     outdated = []
     
-    for package, required_version in dependencies.items():
+    for package, reqs in required_packages.items():
         try:
             module = importlib.import_module(package)
             current_version = getattr(module, '__version__', '0.0.0')
-            if current_version != required_version:
-                outdated.append(f"{package} (requerido: {required_version}, instalado: {current_version})")
+            
+            # Verificar versión mínima requerida
+            try:
+                from packaging import version
+                if version.parse(current_version) < version.parse(reqs['min']):
+                    outdated.append(f"{package} (requerido: >= {reqs['min']}, instalado: {current_version})")
+            except ImportError:
+                missing.append('packaging (requerido para verificación de versiones)')
         except ImportError:
             missing.append(package)
     
@@ -255,11 +261,13 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
             labels[node] = f"{node}\n{activities[node]['name']}\n{te:.1f}d"
         
         # Dibujar todos los nodos de una vez para mejor rendimiento
+        # Asegurarse de que node_colors es una lista de strings
+        node_colors = [str(c) for c in node_colors]
         nx.draw_networkx_nodes(G, pos, node_size=node_size, 
                               node_color=node_colors, 
                               edgecolors=edge_colors,
                               linewidths=1.5,
-                              ax=ax)
+                              ax=ax)  # type: ignore
         
         # Dibujar etiquetas
         nx.draw_networkx_labels(G, pos, labels, font_size=8, 
@@ -432,14 +440,27 @@ def main():
     try:
         # Verificar dependencias
         missing, outdated = check_dependencies()
-        if missing or outdated:
-            st.warning("Problemas con las dependencias:")
-            if missing:
-                st.error(f"Paquetes faltantes: {', '.join(missing)}")
-            if outdated:
-                st.error(f"Paquetes desactualizados: {', '.join(outdated)}")
-            st.info("Por favor instale las dependencias correctas con: pip install -r requirements.txt")
+        if missing:
+            st.error(f"Paquetes faltantes: {', '.join(missing)}")
+            st.info("Por favor instale las dependencias faltantes con: pip install -r requirements.txt")
+            if st.button("Intentar instalar automáticamente"):
+                try:
+                    import subprocess
+                    subprocess.run(["pip", "install", "-r", "requirements.txt"], check=True)
+                    st.success("Instalación completada. Por favor recargue la página.")
+                    return
+                except Exception as e:
+                    st.error(f"No se pudo instalar automáticamente: {str(e)}")
             return
+        
+        if outdated:
+            st.warning("Algunas dependencias tienen versiones diferentes a las recomendadas:")
+            for item in outdated:
+                st.warning(item)
+            st.info("La aplicación puede funcionar, pero para mejor compatibilidad use: pip install -r requirements.txt")
+            
+            if not st.checkbox("Continuar con las versiones actuales (puede haber incompatibilidades)"):
+                return
         
         activities = get_project_data()
         st.title("Presentación Integral PERT-CPM y Control de Obras")
