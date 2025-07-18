@@ -287,53 +287,110 @@ def draw_pert_cpm_diagram(activities, cpm_results, pert_results, show_table=Fals
         st.text(traceback.format_exc())
         return None
 
-def export_to_pdf(img_path, table_df):
+def export_to_pdf(img_path, table_df, gantt_img_path=None):
     try:
         gc.collect()
         pdf_buf = io.BytesIO()
         c = canvas.Canvas(pdf_buf, pagesize=landscape(A2))
+        
+        # Configurar márgenes y estilos
+        left_margin = 40
+        right_margin = 40
+        top_margin = 750
+        section_spacing = 30
+        
+        # Encabezado del reporte
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(40, 550, "REPORTE PERT-CPM - CONTROL DE OBRAS")
+        c.drawString(left_margin, top_margin, "REPORTE PERT-CPM - CONTROL DE OBRAS")
         c.setFont("Helvetica", 12)
-        c.drawString(40, 530, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea")
-        c.drawString(40, 515, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ")
+        c.drawString(left_margin, top_margin - 20, "Proyecto: Construcción de Vivienda de Dos Plantas + Azotea")
+        c.drawString(left_margin, top_margin - 40, "Ubicación: Chiclayo, Lambayeque | Empresa: CONSORCIO DEJ")
+        
+        # Sección 1: Diagrama de Red
+        current_y = top_margin - 70
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(left_margin, current_y, "1. Diagrama de Red PERT-CPM")
+        current_y -= 20
+        
         try:
             if img_path and os.path.exists(img_path):
                 img = ImageReader(img_path)
-                c.drawImage(img, 40, 250, width=900, height=500, mask='auto')
+                # Ajustar tamaño para mejor visualización en PDF
+                img_width = 900
+                img_height = 500
+                c.drawImage(img, left_margin, current_y - img_height, 
+                          width=img_width, height=img_height, mask='auto')
+                current_y -= img_height + section_spacing
             else:
-                c.drawString(40, 300, "No se pudo cargar el diagrama.")
+                c.drawString(left_margin, current_y, "No se pudo cargar el diagrama de red.")
+                current_y -= section_spacing
         except Exception as e:
-            c.drawString(40, 300, f"Error al insertar diagrama: {str(e)}")
-        x0, y0 = 40, 220
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(x0, y0, "Tabla de Actividades y Resultados PERT:")
-        y = y0 - 20
-        col_widths = [50, 180, 70, 50, 50, 50, 50, 80]
+            c.drawString(left_margin, current_y, f"Error al insertar diagrama de red: {str(e)}")
+            current_y -= section_spacing
+        
+        # Sección 2: Diagrama de Gantt
+        if gantt_img_path and os.path.exists(gantt_img_path):
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(left_margin, current_y, "2. Diagrama de Gantt")
+            current_y -= 20
+            
+            try:
+                gantt_img = ImageReader(gantt_img_path)
+                gantt_width = 900
+                gantt_height = 400
+                c.drawImage(gantt_img, left_margin, current_y - gantt_height, 
+                          width=gantt_width, height=gantt_height, mask='auto')
+                current_y -= gantt_height + section_spacing
+            except Exception as e:
+                c.drawString(left_margin, current_y, f"Error al insertar diagrama Gantt: {str(e)}")
+                current_y -= section_spacing
+        
+        # Sección 3: Tabla de actividades
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(left_margin, current_y, "3. Tabla de Actividades y Resultados PERT")
+        current_y -= 20
+        
+        # Configurar tabla
+        col_widths = [50, 180, 70, 50, 50, 50, 50, 80]  # Ajustar anchos de columnas
+        row_height = 15
         headers = list(table_df.columns)
+        
+        # Dibujar encabezados de tabla
         c.setFont("Helvetica-Bold", 9)
         for i, h in enumerate(headers):
-            c.drawString(x0 + sum(col_widths[:i]), y, str(h))
-        y -= 15
+            c.drawString(left_margin + sum(col_widths[:i]), current_y, str(h))
+        current_y -= row_height
+        
+        # Dibujar filas de la tabla
         c.setFont("Helvetica", 8)
         for idx, row in table_df.iterrows():
+            # Verificar si necesitamos nueva página
+            if current_y < 100:
+                c.showPage()
+                current_y = top_margin - 40
+                # Redibujar encabezados si hay cambio de página
+                c.setFont("Helvetica-Bold", 9)
+                for i, h in enumerate(headers):
+                    c.drawString(left_margin + sum(col_widths[:i]), current_y, str(h))
+                current_y -= row_height
+                c.setFont("Helvetica", 8)
+            
             for i, val in enumerate(row):
                 text_val = str(round(val,2)) if isinstance(val, float) else str(val)
-                c.drawString(x0 + sum(col_widths[:i]), y, text_val)
-            y -= 12
-            if y < 30:
-                c.showPage()
-                y = 500
-                c.setFont("Helvetica", 8)
+                c.drawString(left_margin + sum(col_widths[:i]), current_y, text_val)
+            current_y -= row_height
+        
         c.showPage()
         c.save()
         pdf_buf.seek(0)
-        # Guardar automáticamente, pero manejar errores y no detener la app
+        
+        # Guardar automáticamente
         try:
             with open("PERT_CPM_RESULTADOS.pdf", "wb") as f:
                 f.write(pdf_buf.getvalue())
         except Exception as e:
-            st.warning(f"No se pudo guardar el archivo PDF automáticamente en disco: {str(e)}. Puedes descargarlo usando el botón de descarga.")
+            st.warning(f"No se pudo guardar el archivo PDF automáticamente en disco: {str(e)}")
+        
         return pdf_buf
     except Exception as e:
         st.error(f"Error al exportar PDF: {str(e)}")
@@ -515,8 +572,17 @@ def main():
                 
                 st.subheader("Exportar resultados a PDF")
                 try:
+                    # Generar y guardar diagrama Gantt como imagen
+                    gantt_img_path = None
+                    try:
+                        if 'fig_gantt' in locals():
+                            gantt_img_path = "diagrama_gantt.png"
+                            fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
+                    except Exception as gantt_img_error:
+                        st.warning(f"No se pudo guardar el diagrama Gantt: {str(gantt_img_error)}")
+                    
                     if img_path and os.path.exists(img_path) and 'table_df' in locals():
-                        pdf_buf = export_to_pdf(img_path, table_df)
+                        pdf_buf = export_to_pdf(img_path, table_df, gantt_img_path)
                         if pdf_buf is not None:
                             st.download_button("Descargar PDF de Diagrama y Tabla", 
                                              data=pdf_buf.getvalue(), 
