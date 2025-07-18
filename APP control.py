@@ -13,6 +13,14 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image
 import gc
 import os
+import importlib.util
+
+# Verificar si kaleido está disponible para exportar imágenes de Plotly
+try:
+    import kaleido  # Necesario para exportar imágenes de Plotly
+    KALEIDO_AVAILABLE = True
+except ImportError:
+    KALEIDO_AVAILABLE = False
 
 # Configurar límites de PIL para evitar DecompressionBombError
 Image.MAX_IMAGE_PIXELS = None
@@ -574,12 +582,30 @@ def main():
                 try:
                     # Generar y guardar diagrama Gantt como imagen
                     gantt_img_path = None
-                    try:
-                        if 'fig_gantt' in locals():
+                    if 'fig_gantt' in locals():
+                        try:
                             gantt_img_path = "diagrama_gantt.png"
-                            fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
-                    except Exception as gantt_img_error:
-                        st.warning(f"No se pudo guardar el diagrama Gantt: {str(gantt_img_error)}")
+                            # Verificar si kaleido está disponible
+                            if KALEIDO_AVAILABLE:
+                                fig_gantt.write_image(gantt_img_path, engine='kaleido', width=1000, height=600, scale=2)
+                            else:
+                                # Intentar sin especificar engine
+                                fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
+                        except Exception as gantt_img_error:
+                            st.warning("""
+                                No se pudo guardar el diagrama Gantt como imagen. 
+                                Para habilitar esta función, instale Kaleido con: 
+                                `pip install kaleido`
+                            """)
+                            st.warning(f"Detalle del error: {str(gantt_img_error)}")
+                            # Alternativa: guardar como HTML temporal
+                            try:
+                                gantt_img_path = "diagrama_gantt.html"
+                                fig_gantt.write_html(gantt_img_path)
+                                st.warning("Se guardó el diagrama Gantt como HTML temporal. No se incluirá en el PDF.")
+                                gantt_img_path = None  # No incluirlo en el PDF
+                            except Exception as html_error:
+                                st.warning(f"No se pudo guardar el diagrama Gantt en ningún formato: {str(html_error)}")
                     
                     if img_path and os.path.exists(img_path) and 'table_df' in locals():
                         pdf_buf = export_to_pdf(img_path, table_df, gantt_img_path)
