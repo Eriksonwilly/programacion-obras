@@ -18,52 +18,51 @@ import importlib.util
 import sys
 
 def check_dependencies():
-    """Verifica las dependencias principales con mayor flexibilidad en versiones"""
+    """Verifica las dependencias principales con mayor flexibilidad en versiones y manejo especial para kaleido"""
     required_packages = {
         'streamlit': {'min': '1.22.0'},
         'pandas': {'min': '1.5.0'},
         'matplotlib': {'min': '3.6.0'},
         'networkx': {'min': '3.0'},
         'numpy': {'min': '1.23.0'},
-        'PIL': {'min': '9.4.0'},  # PIL es el nombre del módulo para Pillow
+        'PIL': {'min': '9.4.0'},
         'reportlab': {'min': '3.6.0'},
         'plotly': {'min': '5.11.0'},
-        'dateutil': {'min': '2.8.2'},  # python-dateutil se importa como dateutil
-        'kaleido': {'min': '0.0.0', 'alt_name': 'plotly.kaleido'},  # Aceptar cualquier versión de kaleido
+        'dateutil': {'min': '2.8.2'},
         'packaging': {'min': '23.0'}
     }
-    
     missing = []
     outdated = []
-    
+    # Verificar kaleido primero de manera especial
+    try:
+        import kaleido
+        from packaging import version
+        current_version = getattr(kaleido, '__version__', '0.2.1')
+        if version.parse(current_version) < version.parse('0.2.1'):
+            outdated.append(f"kaleido (requerido: >= 0.2.1, instalado: {current_version})")
+    except ImportError:
+        missing.append('kaleido')
+    except Exception:
+        missing.append('kaleido')
+    # Verificar el resto de paquetes
     for package, reqs in required_packages.items():
         try:
-            # Intenta importar con nombre alternativo si existe
-            module_name = reqs.get('alt_name', package)
-            module = importlib.import_module(module_name)
-            
-            # Manejo especial para kaleido
-            if package == 'kaleido':
-                current_version = '0.2.1'  # Asumir versión correcta si se importa
-            else:
-                current_version = getattr(module, '__version__', '0.0.0')
-            
-            # Verificar versión mínima requerida
+            module = importlib.import_module(package)
+            current_version = getattr(module, '__version__', '0.0.0')
             try:
                 from packaging import version
                 if version.parse(current_version) < version.parse(reqs['min']):
                     outdated.append(f"{package} (requerido: >= {reqs['min']}, instalado: {current_version})")
             except ImportError:
-                missing.append('packaging (requerido para verificación de versiones)')
+                if package != 'packaging':
+                    missing.append('packaging')
         except ImportError:
-            # Mapeo de nombres alternativos para mensajes más claros
             display_name = {
                 'PIL': 'Pillow',
-                'dateutil': 'python-dateutil',
-                'kaleido': 'kaleido'
+                'dateutil': 'python-dateutil'
             }.get(package, package)
-            missing.append(display_name)
-    
+            if display_name not in missing:
+                missing.append(display_name)
     return missing, outdated
 
 # Configurar límites de PIL para evitar DecompressionBombError
@@ -454,58 +453,51 @@ def main():
     try:
         # Verificar dependencias
         missing, outdated = check_dependencies()
-        if missing:
-            st.error(f"Paquetes faltantes: {', '.join(missing)}")
-            st.info("""
-            Puede instalar los paquetes faltantes con uno de estos métodos:
-            1. Automáticamente: Haga clic en el botón 'Instalar paquetes faltantes automáticamente' arriba
-            2. Manualmente desde la terminal: `pip install Pillow python-dateutil kaleido`
-            3. Desde el archivo requirements.txt: `pip install -r requirements.txt`
+        # Manejo especial para kaleido
+        if 'kaleido' in missing:
+            st.warning("""
+            **Atención:** Se requiere kaleido para la generación de gráficos.
+            Este paquete necesita instalación especial debido a dependencias binarias.
             """)
-            
-            # Botón para instalar automáticamente
-            if st.button("Instalar paquetes faltantes automáticamente"):
+            if st.button("Instalar kaleido automáticamente (recomendado)"):
                 try:
                     import subprocess
                     import sys
-                    
-                    # Mapeo de nombres de paquetes para pip
-                    package_map = {
-                        'Pillow': 'PIL',
-                        'python-dateutil': 'dateutil',
-                        'kaleido': 'kaleido'
-                    }
-                    
-                    # Construir lista de paquetes a instalar
-                    packages_to_install = []
-                    for m in missing:
-                        pkg = package_map.get(m, m)
-                        packages_to_install.append(pkg)
-                    
-                    # Instalar los paquetes
-                    subprocess.run([sys.executable, "-m", "pip", "install"] + packages_to_install, check=True)
-                    st.success("¡Paquetes instalados correctamente! Por favor recargue la página.")
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "kaleido==0.2.1", "--no-deps", "--force-reinstall"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        st.success("""
+                        ¡kaleido instalado correctamente! 
+                        Por favor recargue la página (F5 o botón de recargar del navegador).
+                        """)
+                    else:
+                        st.error(f"Error al instalar kaleido: {result.stderr}")
+                        st.info("""
+                        Si falla la instalación automática, pruebe manualmente en su terminal:
+                        pip install kaleido==0.2.1 --no-deps --force-reinstall
+                        """)
                     return
                 except Exception as e:
-                    st.error(f"Error al instalar paquetes: {str(e)}")
-                    st.info("Puede instalar manualmente con: pip install Pillow python-dateutil kaleido")
+                    st.error(f"Error en la instalación: {str(e)}")
+                    return
+        if missing and 'kaleido' not in missing:
+            st.error(f"Paquetes faltantes: {', '.join(missing)}")
+            st.info("""
+            Puede instalar los paquetes faltantes con:
+            pip install Pillow python-dateutil
+            O desde el archivo requirements.txt:
+            pip install -r requirements.txt
+            """)
             return
-        
         if outdated:
             st.warning("Algunas dependencias tienen versiones diferentes a las recomendadas:")
             for item in outdated:
                 st.warning(item)
-            
-            # Mensaje específico para kaleido
-            if any("kaleido" in item for item in outdated):
-                st.info("""
-                Para kaleido, pruebe estos comandos:
-                1. `pip uninstall kaleido` (primero desinstalar)
-                2. `pip install kaleido==0.2.1 --force-reinstall` (reinstalar versión específica)
-                """)
-            else:
-                st.info("Para mejor compatibilidad use: pip install -r requirements.txt")
-            
+            st.info("Para mejor compatibilidad, actualice los paquetes con:")
+            st.code("pip install --upgrade -r requirements.txt")
             if not st.checkbox("Continuar con las versiones actuales (puede haber incompatibilidades)"):
                 return
         
@@ -642,37 +634,21 @@ def main():
                         fig_gantt = px.timeline(gantt_df, x_start='Inicio', x_end='Fin', y='Actividad', 
                                               color='Especialidad', title='Cronograma de Ejecución')
                         fig_gantt.update_layout(height=600)
-                        st.plotly_chart(fig_gantt, use_container_width=True)
-                        
-                        # Generar y guardar diagrama Gantt como imagen
                         try:
+                            st.plotly_chart(fig_gantt, use_container_width=True)
                             gantt_img_path = "diagrama_gantt.png"
-                            # Intentar exportar sin especificar engine
                             fig_gantt.write_image(gantt_img_path, width=1000, height=600, scale=2)
-                        except Exception as gantt_img_error:
-                            st.warning("No se pudo exportar el diagrama Gantt como imagen. Usando alternativa matplotlib...")
-                            try:
-                                # Alternativa con matplotlib
-                                plt.figure(figsize=(12, 6))
-                                for esp in gantt_df['Especialidad'].unique():
-                                    df_esp = gantt_df[gantt_df['Especialidad'] == esp]
-                                    plt.barh(df_esp['Actividad'], 
-                                            (df_esp['Fin'] - df_esp['Inicio']).dt.days, 
-                                            left=df_esp['Inicio'], 
-                                            label=esp)
-                                
-                                plt.xlabel('Fecha')
-                                plt.ylabel('Actividad')
-                                plt.title('Diagrama de Gantt')
-                                plt.legend()
-                                plt.tight_layout()
-                                gantt_img_path = "diagrama_gantt_matplotlib.png"
-                                plt.savefig(gantt_img_path, bbox_inches='tight', dpi=120)
-                                plt.close()
-                            except Exception as matplotlib_error:
-                                st.error(f"No se pudo generar el diagrama Gantt: {str(matplotlib_error)}")
-                                gantt_img_path = None
-                        
+                        except Exception as e:
+                            if "kaleido" in str(e).lower():
+                                st.warning("""
+                                **Error al generar gráfico:** Se requiere kaleido para exportar imágenes.
+                                Por favor instale kaleido con:
+                                pip install kaleido==0.2.1 --no-deps --force-reinstall
+                                """)
+                            else:
+                                st.warning(f"No se pudo mostrar el gráfico Gantt: {str(e)}")
+                            st.dataframe(gantt_df)
+                            gantt_img_path = None
                     except Exception as gantt_error:
                         st.warning(f"No se pudo generar el gráfico Gantt: {str(gantt_error)}")
                         st.dataframe(gantt_df)
